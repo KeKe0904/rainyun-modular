@@ -22,13 +22,15 @@
         font: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
     };
 
-    // ===== 雨云 API 查询工具定义 =====
+    // ===== 雨云 API 查询工具定义（基于官方API文档）=====
+    // 文档: https://apifox.com/apidoc/shared-a4595cc8-44c5-4678-a2a3-eed7738dab03
     const TOOLS = [
+        // === 用户模块 ===
         {
             type: 'function',
             function: {
                 name: 'get_user_info',
-                description: '获取当前登录用户的基本信息，包括积分、余额、VIP等级、实名认证状态等',
+                description: '获取当前登录用户的基本信息，包括积分(Points)、产品积分(PointsFromProduct)、冻结积分(LockPoints)、余额、VIP等级、实名认证状态等',
                 parameters: { type: 'object', properties: {}, required: [] }
             }
         },
@@ -36,118 +38,23 @@
             type: 'function',
             function: {
                 name: 'get_user_logs',
-                description: '获取用户操作日志',
+                description: '查询雨云用户操作日志',
                 parameters: {
                     type: 'object',
                     properties: {
-                        page: { type: 'integer', description: '页码，从1开始，默认1' },
+                        log_type: { type: 'string', description: '日志类型' },
+                        page_no: { type: 'integer', description: '页码，从1开始，默认1' },
                         page_size: { type: 'integer', description: '每页数量，默认10' }
                     },
-                    required: []
+                    required: ['log_type']
                 }
             }
         },
         {
             type: 'function',
             function: {
-                name: 'get_products',
-                description: '获取用户所有产品的汇总数据和使用情况',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_rcs_list',
-                description: '获取用户的所有云服务器(RCS)列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_rcs_detail',
-                description: '获取指定云服务器的详细信息，包括配置、状态、IP等',
-                parameters: {
-                    type: 'object',
-                    properties: { id: { type: 'integer', description: '云服务器ID' } },
-                    required: ['id']
-                }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_rgs_list',
-                description: '获取用户的所有游戏云(RGS)实例列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_rvh_list',
-                description: '获取用户的所有虚拟主机(RVH)列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_domains',
-                description: '获取用户的所有域名列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_domain_dns',
-                description: '获取指定域名的DNS解析记录',
-                parameters: {
-                    type: 'object',
-                    properties: { id: { type: 'integer', description: '域名ID' } },
-                    required: ['id']
-                }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_ssl_list',
-                description: '获取用户的所有SSL证书列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_workorders',
-                description: '获取用户的工单列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_ros_list',
-                description: '获取用户的对象存储(ROS)实例列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_rcdn_list',
-                description: '获取用户的CDN(RCDN)实例列表',
-                parameters: { type: 'object', properties: {}, required: [] }
-            }
-        },
-        {
-            type: 'function',
-            function: {
-                name: 'get_reward_list',
-                description: '获取用户的积分奖励记录列表',
+                name: 'get_reward_tasks',
+                description: '获取用户的积分奖励任务列表',
                 parameters: { type: 'object', properties: {}, required: [] }
             }
         },
@@ -162,8 +69,311 @@
         {
             type: 'function',
             function: {
-                name: 'get_announcements',
-                description: '获取雨云官方公告信息',
+                name: 'get_reward_items',
+                description: '获取可兑换的积分产品列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_vip_config',
+                description: '获取用户当前VIP等级配置',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_user_coupons',
+                description: '获取用户的优惠券列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 产品模块 ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_products',
+                description: '获取用户所有产品的汇总数据和使用情况',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_product_ids',
+                description: '获取产品ID列表，可按产品类型和区域筛选',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        product_type: { type: 'string', description: '产品类型：rcs(云服务器)、rgs(游戏云)、rvh(虚拟主机)、rbm(裸金属)、ros(对象存储)、rcdn(CDN)、domain(域名)、ssl(SSL证书)' },
+                        region: { type: 'string', description: '区域' }
+                    },
+                    required: []
+                }
+            }
+        },
+        // === 云服务器 RCS ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_list',
+                description: '获取用户的所有云服务器(RCS)列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_detail',
+                description: '获取指定云服务器的详细信息，包括配置、状态、IP、到期时间等',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '云服务器ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_firewall_rules',
+                description: '获取指定云服务器的防火墙规则列表',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '云服务器ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_monitor',
+                description: '获取指定云服务器的监控数据（CPU、内存、网络等）',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '云服务器ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_os_list',
+                description: '获取云服务器可用的操作系统列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcs_plans',
+                description: '获取云服务器套餐列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 游戏云 RGS ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_rgs_list',
+                description: '获取用户的所有游戏云(RGS)实例列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rgs_detail',
+                description: '获取指定游戏云实例的详细信息',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '游戏云实例ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        // === 虚拟主机 RVH ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_rvh_list',
+                description: '获取用户的所有虚拟主机(RVH)列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rvh_detail',
+                description: '获取指定虚拟主机的详细信息',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '虚拟主机ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        // === 域名 Domain ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_domains',
+                description: '获取用户的所有域名列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_domain_detail',
+                description: '获取指定域名的详细信息',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '域名ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_domain_dns',
+                description: '获取指定域名的DNS解析记录列表',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'integer', description: '域名ID' },
+                        page_no: { type: 'integer', description: '页码，从1开始，默认1' },
+                        limit: { type: 'integer', description: '每页数量，默认20' }
+                    },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_domain_whois',
+                description: '获取指定域名的WHOIS信息',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '域名ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_domain_renew_price',
+                description: '获取指定域名的续费价格',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '域名ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        // === SSL 证书 ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_ssl_list',
+                description: '获取用户的所有SSL证书列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 工单 ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_workorders',
+                description: '获取用户的工单列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_workorder_detail',
+                description: '获取指定工单的详细信息',
+                parameters: {
+                    type: 'object',
+                    properties: { id: { type: 'integer', description: '工单ID' } },
+                    required: ['id']
+                }
+            }
+        },
+        // === 对象存储 ROS ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_ros_instances',
+                description: '获取用户的对象存储(ROS)实例列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_ros_buckets',
+                description: '获取对象存储存储桶列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === CDN RCDN ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcdn_instances',
+                description: '获取用户的CDN(RCDN)实例列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_rcdn_domains',
+                description: '获取CDN加速域名列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 裸金属 RBM ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_rbm_list',
+                description: '获取用户的裸金属服务器(RBM)实例列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 财务 ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_orders',
+                description: '获取用户的订单列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        {
+            type: 'function',
+            function: {
+                name: 'get_invoice_titles',
+                description: '获取发票抬头列表',
+                parameters: { type: 'object', properties: {}, required: [] }
+            }
+        },
+        // === 公共 ===
+        {
+            type: 'function',
+            function: {
+                name: 'get_news',
+                description: '获取雨云官方公告/新闻',
                 parameters: { type: 'object', properties: {}, required: [] }
             }
         },
@@ -177,35 +387,70 @@
         }
     ];
 
-    // 工具名 → API 端点映射
+    // ===== 工具名 → API 端点映射（基于官方API文档确认的路径）=====
     const TOOL_ROUTES = {
-        get_user_info:      () => ({ method: 'GET', path: '/user/' }),
-        get_user_logs:      (a) => ({ method: 'GET', path: `/user/log?page=${a.page||1}&page_size=${a.page_size||10}` }),
-        get_products:       () => ({ method: 'GET', path: '/product/' }),
-        get_rcs_list:       () => ({ method: 'GET', path: '/product/rcs/' }),
-        get_rcs_detail:     (a) => ({ method: 'GET', path: `/product/rcs/${a.id}` }),
-        get_rgs_list:       () => ({ method: 'GET', path: '/product/rgs/' }),
-        get_rvh_list:       () => ({ method: 'GET', path: '/product/rvh/' }),
-        get_domains:        () => ({ method: 'GET', path: '/product/domain/' }),
-        get_domain_dns:     (a) => ({ method: 'GET', path: `/product/domain/${a.id}/dns` }),
-        get_ssl_list:       () => ({ method: 'GET', path: '/product/ssl/' }),
-        get_workorders:     () => ({ method: 'GET', path: '/product/workorder/' }),
-        get_ros_list:       () => ({ method: 'GET', path: '/product/ros/' }),
-        get_rcdn_list:      () => ({ method: 'GET', path: '/product/rcdn/' }),
-        get_reward_list:    () => ({ method: 'GET', path: '/user/reward/list' }),
-        get_withdraw_list:  () => ({ method: 'GET', path: '/user/reward/withdraw/list' }),
-        get_announcements:  () => ({ method: 'GET', path: '/public/forum/announcement' }),
-        get_nodes_status:   () => ({ method: 'GET', path: '/public/nodes/status' })
+        // 用户模块
+        get_user_info:      () => '/user/',
+        get_user_logs:      (a) => `/user/logs?log_type=${encodeURIComponent(a.log_type || '')}&page_no=${a.page_no||1}&page_size=${a.page_size||10}`,
+        get_reward_tasks:   () => '/user/reward/tasks',
+        get_withdraw_list:  () => '/user/reward/withdraw',
+        get_reward_items:   () => '/user/reward/items',
+        get_vip_config:     () => '/user/vip',
+        get_user_coupons:   () => '/user/coupons',
+        // 产品模块
+        get_products:       () => '/product/',
+        get_product_ids:    (a) => `/product/id_list${a.product_type ? '?product_type=' + encodeURIComponent(a.product_type) : ''}${a.region ? (a.product_type ? '&' : '?') + 'region=' + encodeURIComponent(a.region) : ''}`,
+        // 云服务器 RCS
+        get_rcs_list:       () => '/product/rcs/',
+        get_rcs_detail:     (a) => `/product/rcs/${a.id}/`,
+        get_rcs_firewall_rules: (a) => `/product/rcs/${a.id}/firewall/rules`,
+        get_rcs_monitor:    (a) => `/product/rcs/${a.id}/monitor`,
+        get_rcs_os_list:    () => '/product/rcs/os',
+        get_rcs_plans:      () => '/product/rcs/plans',
+        // 游戏云 RGS
+        get_rgs_list:       () => '/product/rgs/',
+        get_rgs_detail:     (a) => `/product/rgs/${a.id}/`,
+        // 虚拟主机 RVH
+        get_rvh_list:       () => '/product/rvh/',
+        get_rvh_detail:     (a) => `/product/rvh/${a.id}/`,
+        // 域名 Domain
+        get_domains:        () => '/product/domain/',
+        get_domain_detail:  (a) => `/product/domain/${a.id}/`,
+        get_domain_dns:     (a) => `/product/domain/${a.id}/dns/?page_no=${a.page_no||1}&limit=${a.limit||20}`,
+        get_domain_whois:   (a) => `/product/domain/${a.id}/whois`,
+        get_domain_renew_price: (a) => `/product/domain/${a.id}/renew_price`,
+        // SSL 证书
+        get_ssl_list:       () => '/product/sslcenter/',
+        // 工单
+        get_workorders:     () => '/workorder/',
+        get_workorder_detail: (a) => `/workorder/${a.id}`,
+        // 对象存储 ROS
+        get_ros_instances:  () => '/product/ros/instance',
+        get_ros_buckets:    () => '/product/ros/bucket',
+        // CDN RCDN
+        get_rcdn_instances: () => '/product/rcdn/instance',
+        get_rcdn_domains:   () => '/product/rcdn/domain',
+        // 裸金属 RBM
+        get_rbm_list:       () => '/product/rbm/',
+        // 财务
+        get_orders:         () => '/expense/order',
+        get_invoice_titles: () => '/expense/invoice/title',
+        // 公共
+        get_news:           () => '/news',
+        get_nodes_status:   () => '/status'
     };
 
     const SYSTEM_PROMPT = `你是雨云(RainYun)云平台的AI助手，运行在用户的浏览器中。你可以通过调用工具来查询用户的云资源信息。
 
 你可以帮助用户查询：
-- 用户信息、积分、余额、VIP等级
-- 云服务器(RCS)、游戏云(RGS)、虚拟主机(RVH)的状态和详情
-- 域名列表和DNS解析记录
-- SSL证书、CDN、对象存储等
-- 工单、积分奖励、提现记录
+- 用户信息：积分(总积分=Points+PointsFromProduct+LockPoints，其中LockPoints为冻结积分)、余额、VIP等级、实名认证
+- 云服务器(RCS)：列表、详情、防火墙规则、监控数据、可用系统和套餐
+- 游戏云(RGS)、虚拟主机(RVH)、裸金属(RBM)的状态和详情
+- 域名：列表、详情、DNS解析记录、WHOIS信息、续费价格
+- SSL证书、CDN、对象存储
+- 工单列表和详情
+- 积分奖励任务、提现记录、可兑换物品、优惠券
+- 订单、发票抬头
 - 官方公告和节点状态
 
 重要规则：
@@ -213,7 +458,7 @@
 2. 用简洁的中文回答，重点突出用户关心的信息。
 3. 如果查询结果较多，请总结关键信息，不要原样输出全部数据。
 4. 如果用户问题不明确，先调用相关查询工具获取信息再回答。
-5. 积分相关：总积分 = Points + PointsFromProduct + LockPoints，其中 LockPoints 为冻结积分。`;
+5. 涉及金额时，雨云积分通常以"分"为单位（如100积分=1元）。`;
 
     // ===== 聊天历史 =====
     let chatHistory = [];
@@ -240,9 +485,8 @@
         const routeFn = TOOL_ROUTES[name];
         if (!routeFn) return JSON.stringify({ error: `未知工具: ${name}` });
         try {
-            const route = routeFn(args || {});
-            const result = await rainyunFetch(route.path);
-            // 截断过长的结果，避免超出 token 限制
+            const path = routeFn(args || {});
+            const result = await rainyunFetch(path);
             let str = JSON.stringify(result);
             if (str.length > 6000) str = str.substring(0, 6000) + '...(已截断)';
             return str;
@@ -291,16 +535,13 @@
             const msg = response.choices[0].message;
             messages.push(msg);
 
-            // 没有 tool_calls，返回最终文本
             if (!msg.tool_calls || msg.tool_calls.length === 0) {
                 chatHistory.push({ role: 'user', content: userMessage });
                 chatHistory.push({ role: 'assistant', content: msg.content || '(无回复)' });
-                // 限制历史长度
                 if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
                 return msg.content || '(无回复)';
             }
 
-            // 执行所有工具调用
             for (const tc of msg.tool_calls) {
                 const args = JSON.parse(tc.function.arguments || '{}');
                 const result = await executeTool(tc.function.name, args);
@@ -438,23 +679,18 @@
         panel = document.createElement('div');
         panel.className = 'ai-panel';
 
-        // 头部
         const header = document.createElement('div');
         header.className = 'ai-header';
-        header.innerHTML = `
-            <div class="ai-title"><span class="ai-title-dot"></span>AI 助手</div>
-        `;
+        header.innerHTML = `<div class="ai-title"><span class="ai-title-dot"></span>AI 助手</div>`;
         const closeBtn = document.createElement('div');
         closeBtn.className = 'ai-close';
         closeBtn.textContent = '✕';
         closeBtn.addEventListener('click', togglePanel);
         header.appendChild(closeBtn);
 
-        // 消息区
         messagesEl = document.createElement('div');
         messagesEl.className = 'ai-messages';
 
-        // 欢迎语
         if (chatHistory.length === 0) {
             const welcome = document.createElement('div');
             welcome.className = 'ai-welcome';
@@ -462,7 +698,6 @@
             messagesEl.appendChild(welcome);
         }
 
-        // 输入区
         const inputArea = document.createElement('div');
         inputArea.className = 'ai-input-area';
         inputEl = document.createElement('input');
@@ -489,7 +724,6 @@
         panel.appendChild(inputArea);
         document.body.appendChild(panel);
 
-        // 延迟显示动画
         requestAnimationFrame(() => panel.classList.add('visible'));
     }
 
@@ -503,7 +737,6 @@
     }
 
     function addMessage(role, content) {
-        // 移除欢迎语
         const welcome = messagesEl.querySelector('.ai-welcome');
         if (welcome) welcome.remove();
 
@@ -541,7 +774,6 @@
         const text = inputEl.value.trim();
         if (!text || isProcessing) return;
 
-        // 检查 API Key
         if (!AI_API_KEY) {
             addMessage('ai', '请先在模块管理器中配置 AI API Key，然后刷新页面。');
             return;
