@@ -32,57 +32,96 @@
         { header: 'IP地址', columnIndex: 0 }
     ];
 
-    // SVG icons for normal and slashed-eye states
+    // 苹果风格配色（与管理器一致）
+    const C = {
+        primary: '#007AFF',
+        active: '#FF3B30',
+        text: '#1d1d1f',
+        sub: '#86868b',
+        bg: 'rgba(255,255,255,0.82)',
+        border: 'rgba(0,0,0,0.06)',
+        font: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
+    };
+
+    // SVG icons（线条图标，适配苹果风格）
     const normalEyeIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
             <circle cx="12" cy="12" r="3"></circle>
         </svg>
     `;
     const slashedEyeIcon = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
             <line x1="1" y1="1" x2="23" y2="23"></line>
-            <circle cx="12" cy="12" r="3"></circle>
         </svg>
     `;
 
-    // Create and style the toggle button
+    // 创建可拖动悬浮按钮（简约苹果风格）
     function createToggleButton() {
+        const wrapper = document.createElement('div');
+        Object.assign(wrapper.style, {
+            position: 'fixed',
+            bottom: '24px',
+            left: '24px',
+            zIndex: '10000',
+            padding: '20px',
+            margin: '-20px'
+        });
+
         const button = document.createElement('div');
-        button.innerHTML = normalEyeIcon; // Set the initial icon to the normal eye
+        button.innerHTML = normalEyeIcon;
+        Object.assign(button.style, {
+            width: '44px',
+            height: '44px',
+            borderRadius: '14px',
+            background: C.primary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 12px rgba(0,122,255,0.3)',
+            opacity: '0.85',
+            transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)'
+        });
 
-        button.style.position = 'fixed';
-        button.style.bottom = '20px';
-        button.style.left = '20px';
-        button.style.width = '40px';
-        button.style.height = '40px';
-        button.style.backgroundColor = '#37b5c1';
-        button.style.borderRadius = '50%';
-        button.style.display = 'flex';
-        button.style.alignItems = 'center';
-        button.style.justifyContent = 'center';
-        button.style.cursor = 'pointer';
-        button.style.zIndex = '1000';
-        button.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.2)';
-        document.body.appendChild(button);
+        wrapper.appendChild(button);
+        document.body.appendChild(wrapper);
 
-        // Add dragging functionality
+        // 悬停效果
+        wrapper.addEventListener('mouseenter', () => {
+            button.style.opacity = '1';
+            button.style.borderRadius = '22px';
+            button.style.boxShadow = '0 4px 18px rgba(0,122,255,0.4)';
+        });
+        wrapper.addEventListener('mouseleave', () => {
+            if (!privacyProtectionEnabled) {
+                button.style.opacity = '0.85';
+            }
+            button.style.borderRadius = '14px';
+            button.style.boxShadow = '0 2px 12px rgba(0,122,255,0.3)';
+        });
+
+        // 拖动功能
         let isDragging = false;
         let hasMoved = false;
         let offsetX = 0;
         let offsetY = 0;
         let initialX = 0;
         let initialY = 0;
-        const dragThreshold = 3; // 拖动的最小距离阈值
+        const dragThreshold = 3;
 
         button.addEventListener('mousedown', (e) => {
             isDragging = true;
             hasMoved = false;
-            offsetX = e.clientX - button.offsetLeft;
-            offsetY = e.clientY - button.offsetTop;
+            const rect = wrapper.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
             initialX = e.clientX;
             initialY = e.clientY;
+            e.preventDefault();
         });
 
         document.addEventListener('mousemove', (e) => {
@@ -92,8 +131,9 @@
                 if (Math.abs(moveX) > dragThreshold || Math.abs(moveY) > dragThreshold) {
                     hasMoved = true;
                     button.style.cursor = 'move';
-                    button.style.left = `${e.clientX - offsetX}px`;
-                    button.style.top = `${e.clientY - offsetY}px`;
+                    wrapper.style.bottom = 'auto';
+                    wrapper.style.left = (e.clientX - offsetX) + 'px';
+                    wrapper.style.top = (e.clientY - offsetY) + 'px';
                 }
             }
         });
@@ -119,10 +159,14 @@
         privacyProtectionEnabled = !privacyProtectionEnabled;
         if (privacyProtectionEnabled) {
             applyPrivacyProtection();
-            toggleButton.innerHTML = slashedEyeIcon; // Change to slashed-eye icon
+            toggleButton.innerHTML = slashedEyeIcon;
+            toggleButton.style.background = C.active;
+            toggleButton.style.boxShadow = '0 2px 12px rgba(255,59,48,0.35)';
         } else {
             removePrivacyProtection();
-            toggleButton.innerHTML = normalEyeIcon; // Change back to normal eye icon
+            toggleButton.innerHTML = normalEyeIcon;
+            toggleButton.style.background = C.primary;
+            toggleButton.style.boxShadow = '0 2px 12px rgba(0,122,255,0.3)';
         }
     }
 

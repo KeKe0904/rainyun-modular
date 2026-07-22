@@ -512,6 +512,11 @@
                 if (key) {
                     RAINYUN_API_KEY = key;
                     autoFetchedKey = true;
+                    // 同步回写到管理器配置（持久化 + 更新配置输入框）
+                    if (window.rmUpdateModuleConfig) {
+                        window.rmUpdateModuleConfig('ai-assistant', 'rainyun_api_key', key);
+                        console.log('[AI助手] API Key 已同步到配置');
+                    }
                     console.log('[AI助手] 自动获取API Key成功');
                     return true;
                 } else {

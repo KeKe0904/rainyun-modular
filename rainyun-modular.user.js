@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
@@ -201,10 +201,44 @@
         }
     }
 
+    // 暴露配置更新函数到页面上下文（供模块回写配置，如自动获取API Key后同步显示）
+    function exposeConfigUpdater() {
+        const updateConfig = function(moduleId, key, value) {
+            try {
+                const module = state.installedModules[moduleId];
+                if (!module) return false;
+                if (!module.config) module.config = {};
+                module.config[key] = value;
+                GM_setValue(`module_${moduleId}`, JSON.stringify(module));
+                // 同步更新已注入到页面的配置
+                if (window.RainyunModularConfig && window.RainyunModularConfig[moduleId]) {
+                    window.RainyunModularConfig[moduleId].config = window.RainyunModularConfig[moduleId].config || {};
+                    window.RainyunModularConfig[moduleId].config[key] = value;
+                }
+                // 若管理器UI中的配置表单可见，同步更新输入框
+                const form = managerUI && managerUI.querySelector(`[data-module-config="${moduleId}"]`);
+                if (form) {
+                    const input = form.querySelector(`[data-config-key="${key}"]`);
+                    if (input) input.value = value;
+                }
+                return true;
+            } catch (e) {
+                console.error('[管理器] 更新模块配置失败:', e);
+                return false;
+            }
+        };
+        try {
+            unsafeWindow.rmUpdateModuleConfig = updateConfig;
+        } catch (e) {
+            window.rmUpdateModuleConfig = updateConfig;
+        }
+    }
+
     // 初始化
     async function init() {
         injectGlobalStyles();
         exposeGMFetch();
+        exposeConfigUpdater();
         loadInstalledModules();
         document.body.appendChild(createFloatingButton());
         await checkForUpdates();
@@ -328,6 +362,11 @@
         if (managerUI) {
             managerUI.remove();
             managerUI = null;
+        }
+        // 关闭设置面板避免重叠
+        if (settingsUI) {
+            settingsUI.remove();
+            settingsUI = null;
         }
 
         managerUI = document.createElement('div');
@@ -474,15 +513,18 @@
         const isMobile = window.innerWidth < 768;
         Object.assign(settingsUI.style, {
             position: 'fixed',
-            left: isMobile ? '0' : 'calc(80px + 360px)',
+            // 移动端：覆盖在管理器上方；桌面端：紧贴管理器右侧（间距12px）
+            left: isMobile ? '0' : 'calc(80px + 340px + 12px)',
             top: '50%',
             transform: 'translateY(-50%) scale(0.95)',
             width: isMobile ? '100%' : '260px',
+            maxHeight: '80vh',
             backgroundColor: STYLE_CONFIG.backgroundColor,
             borderRadius: STYLE_CONFIG.borderRadius,
             boxShadow: STYLE_CONFIG.boxShadow,
             border: `1px solid ${STYLE_CONFIG.borderColor}`,
-            zIndex: '9999',
+            // 设置面板层级高于管理器，确保移动端覆盖
+            zIndex: '10001',
             opacity: '0',
             transition: 'opacity 0.25s ease, transform 0.25s cubic-bezier(0.4,0,0.2,1)',
             overflow: 'hidden'
@@ -865,6 +907,7 @@
         // 折叠内容区
         const body = document.createElement('div');
         body.className = 'rm-config-body collapsed';
+        body.setAttribute('data-module-config', moduleId);
 
         header.addEventListener('click', () => {
             const isCollapsed = body.classList.contains('collapsed');
@@ -907,9 +950,11 @@
                 input = document.createElement('input');
                 input.type = 'text';
                 input.value = module.config[item.key] || item.default;
+                input.setAttribute('data-config-key', item.key);
                 Object.assign(input.style, inputBase);
             } else if (item.type === 'select') {
                 input = document.createElement('select');
+                input.setAttribute('data-config-key', item.key);
                 Object.assign(input.style, inputBase);
                 Object.assign(input.style, { cursor: 'pointer' });
                 item.options.forEach(opt => {

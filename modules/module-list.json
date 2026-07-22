@@ -3,9 +3,9 @@
     "id": "privacy-protection",
     "name": "隐私保护",
     "description": "给包含特定隐私内容的元素持续添加模糊效果，并提供可拖动悬浮按钮控制，适用于截图/录屏等多个场景",
-    "version": "0.17",
+    "version": "0.18",
     "path": "privacy-protection",
-    "script": "0.17.user.js"
+    "script": "0.18.user.js"
   },
   {
     "id": "mcsm-new-tab",
@@ -83,9 +83,9 @@
     "id": "ai-assistant",
     "name": "AI助手",
     "description": "使用AI自然语言查询雨云资源信息（服务器、域名、积分等），仅支持查询操作",
-    "version": "0.4",
+    "version": "0.5",
     "path": "ai-assistant",
-    "script": "0.4.user.js",
+    "script": "0.5.user.js",
     "configSchema": [
       {
         "key": "rainyun_api_key",
