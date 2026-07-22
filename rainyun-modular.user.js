@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
@@ -16,8 +16,11 @@
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
+// @grant        unsafeWindow
 // @connect      github.com
 // @connect      rainyun-modular.zzwl.top
+// @connect      api.v2.rainyun.com
+// @connect      app.rainyun.com
 // ==/UserScript==
 
 (function() {
@@ -120,12 +123,88 @@
                 transition: opacity 0.15s ease, transform 0.1s ease;
             }
             .rm-btn:active { transform: scale(0.96); }
+
+            .rm-config-header {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 8px 10px; cursor: pointer; user-select: none;
+                border-radius: ${STYLE_CONFIG.smallRadius};
+                background: ${STYLE_CONFIG.cardColor};
+                transition: background 0.15s ease;
+            }
+            .rm-config-header:hover { background: rgba(120,120,128,0.14); }
+            .rm-config-title {
+                font-size: 12px; font-weight: 600;
+                color: ${STYLE_CONFIG.textColor};
+                font-family: ${STYLE_CONFIG.fontStack};
+                display: flex; align-items: center; gap: 6px;
+            }
+            .rm-config-arrow {
+                font-size: 10px; color: ${STYLE_CONFIG.secondaryText};
+                transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+            }
+            .rm-config-arrow.collapsed { transform: rotate(-90deg); }
+            .rm-config-body {
+                overflow: hidden;
+                transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, padding 0.3s ease;
+                max-height: 600px; opacity: 1; padding: 8px 4px 0;
+            }
+            .rm-config-body.collapsed {
+                max-height: 0; opacity: 0; padding: 0 4px;
+            }
         `);
+    }
+
+    // 暴露 GM_xmlhttpRequest 到页面上下文（供模块绕过 CORS 并携带 Cookie）
+    function exposeGMFetch() {
+        const gmFetch = function(input, init) {
+            init = init || {};
+            const url = typeof input === 'string' ? input : (input.url || input);
+            const method = init.method || (typeof input === 'object' && input.method) || 'GET';
+            const body = init.body || (typeof input === 'object' && input.body) || null;
+            // 规范化 headers
+            let headers = init.headers || (typeof input === 'object' && input.headers) || {};
+            if (headers instanceof Headers) {
+                const obj = {};
+                headers.forEach((v, k) => { obj[k] = v; });
+                headers = obj;
+            }
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: method,
+                    url: url,
+                    headers: headers,
+                    data: body,
+                    anonymous: false, // 携带 Cookie（跨域也可）
+                    timeout: 30000,
+                    onload: (response) => {
+                        resolve({
+                            ok: response.status >= 200 && response.status < 300,
+                            status: response.status,
+                            statusText: response.statusText,
+                            text: () => Promise.resolve(response.responseText),
+                            json: () => {
+                                try { return Promise.resolve(JSON.parse(response.responseText)); }
+                                catch (e) { return Promise.reject(e); }
+                            }
+                        });
+                    },
+                    onerror: () => reject(new Error('GM_xmlhttpRequest 网络错误')),
+                    ontimeout: () => reject(new Error('GM_xmlhttpRequest 超时')),
+                    onabort: () => reject(new Error('GM_xmlhttpRequest 已中止'))
+                });
+            });
+        };
+        try {
+            unsafeWindow.rmGMFetch = gmFetch;
+        } catch (e) {
+            window.rmGMFetch = gmFetch;
+        }
     }
 
     // 初始化
     async function init() {
         injectGlobalStyles();
+        exposeGMFetch();
         loadInstalledModules();
         document.body.appendChild(createFloatingButton());
         await checkForUpdates();
@@ -763,6 +842,41 @@
             paddingTop: '10px'
         });
 
+        // 折叠头部
+        const header = document.createElement('div');
+        header.className = 'rm-config-header';
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'rm-config-title';
+        const gearIcon = document.createElement('span');
+        gearIcon.textContent = '⚙';
+        gearIcon.style.fontSize = '11px';
+        const titleText = document.createElement('span');
+        titleText.textContent = '模块配置';
+        titleWrap.appendChild(gearIcon);
+        titleWrap.appendChild(titleText);
+
+        const arrow = document.createElement('span');
+        arrow.className = 'rm-config-arrow collapsed';
+        arrow.textContent = '▼';
+
+        header.appendChild(titleWrap);
+        header.appendChild(arrow);
+
+        // 折叠内容区
+        const body = document.createElement('div');
+        body.className = 'rm-config-body collapsed';
+
+        header.addEventListener('click', () => {
+            const isCollapsed = body.classList.contains('collapsed');
+            if (isCollapsed) {
+                body.classList.remove('collapsed');
+                arrow.classList.remove('collapsed');
+            } else {
+                body.classList.add('collapsed');
+                arrow.classList.add('collapsed');
+            }
+        });
+
         schema.forEach(item => {
             const wrapper = document.createElement('div');
             wrapper.style.marginBottom = '10px';
@@ -815,8 +929,11 @@
 
             wrapper.appendChild(label);
             wrapper.appendChild(input);
-            form.appendChild(wrapper);
+            body.appendChild(wrapper);
         });
+
+        form.appendChild(header);
+        form.appendChild(body);
 
         return form;
     }
@@ -889,7 +1006,7 @@
         });
     }
 
-    // 安装模块
+    // 安装模块（更新时保留已有配置）
     async function installModule(module) {
         try {
             const source = CONFIG.getCurrentSource();
@@ -901,18 +1018,30 @@
             }
 
             const scriptContent = await response.text();
+
+            // 读取已存在的模块数据（用于更新时保留配置）
+            const existingData = state.installedModules[module.id];
+            const existingConfig = (existingData && existingData.config) || {};
+
+            // 以 schema 默认值为基底，再用已有配置覆盖（仅保留 schema 中仍存在的键）
+            const newConfig = module.configSchema ? module.configSchema.reduce((acc, item) => {
+                acc[item.key] = (existingConfig[item.key] !== undefined)
+                    ? existingConfig[item.key]
+                    : item.default;
+                return acc;
+            }, {}) : {};
+
             const moduleData = {
                 id: module.id,
                 name: module.name,
                 description: module.description,
                 version: module.version,
-                enabled: true,
-                installedAt: new Date().toISOString(),
+                // 更新时保留启用状态
+                enabled: existingData ? existingData.enabled : true,
+                installedAt: existingData ? existingData.installedAt : new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
                 scriptContent,
-                config: module.configSchema ? module.configSchema.reduce((acc, item) => {
-                    acc[item.key] = item.default;
-                    return acc;
-                }, {}) : {}
+                config: newConfig
             };
 
             GM_setValue(`module_${module.id}`, JSON.stringify(moduleData));
@@ -925,7 +1054,8 @@
                 openManager();
             }
 
-            showNotification(`模块 "${module.name}" 安装成功`);
+            const action = existingData ? '更新' : '安装';
+            showNotification(`模块 "${module.name}" ${action}成功`);
             executeModule(moduleData);
         } catch (error) {
             console.error('安装模块失败:', error);

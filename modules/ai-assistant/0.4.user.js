@@ -484,32 +484,51 @@
     let chatHistory = [];
     let isProcessing = false;
 
-    // ===== 自动获取雨云 API Key（通过登录 Cookie）=====
+    // ===== 自动获取雨云 API Key（通过登录 Cookie，使用 GM_xmlhttpRequest 绕过 CORS）=====
     async function autoFetchApiKey() {
-        try {
-            const resp = await fetch(RAINYUN_API + '/user/?no_cache=true', {
-                method: 'GET',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!resp.ok) return false;
-            const data = await resp.json();
-            const key = data.APIKey || (data.data && data.data.APIKey);
-            if (key) {
-                RAINYUN_API_KEY = key;
-                autoFetchedKey = true;
-                return true;
+        // 优先使用管理器暴露的 rmGMFetch（基于 GM_xmlhttpRequest，可跨域并携带 Cookie）
+        const fetchFn = window.rmGMFetch || window.fetch;
+        const endpoints = [
+            RAINYUN_API + '/user/?no_cache=true',
+            'https://app.rainyun.com/api/user/?no_cache=true'
+        ];
+        for (const url of endpoints) {
+            try {
+                const resp = await fetchFn(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!resp.ok) {
+                    console.warn(`[AI助手] ${url} 返回 ${resp.status}`);
+                    continue;
+                }
+                const data = await resp.json();
+                // 兼容多种响应结构
+                const key = data.APIKey ||
+                           (data.data && data.data.APIKey) ||
+                           (data.data && data.data.ApiKey) ||
+                           (data.data && data.data.api_key);
+                if (key) {
+                    RAINYUN_API_KEY = key;
+                    autoFetchedKey = true;
+                    console.log('[AI助手] 自动获取API Key成功');
+                    return true;
+                } else {
+                    console.warn('[AI助手] 响应中未找到 APIKey 字段:', JSON.stringify(data).substring(0, 200));
+                }
+            } catch (e) {
+                console.warn(`[AI助手] 请求 ${url} 失败:`, e.message);
             }
-        } catch (e) {
-            console.warn('[AI助手] 自动获取API Key失败:', e.message);
         }
         return false;
     }
 
-    // ===== 雨云 API 请求（官方 API Key 认证）=====
+    // ===== 雨云 API 请求（官方 API Key 认证，优先用 rmGMFetch 绕过 CORS）=====
     async function rainyunFetch(path) {
         const url = RAINYUN_API + path;
-        const resp = await fetch(url, {
+        const fetchFn = window.rmGMFetch || window.fetch;
+        const resp = await fetchFn(url, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -881,9 +900,12 @@
         createFab();
         // 启动时自动获取雨云 API Key（如果未配置）
         if (!RAINYUN_API_KEY) {
-            autoFetchApiKey().then(ok => {
-                console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', ok ? '(雨云API: 自动获取成功)' : '(雨云API: 未配置，将在首次使用时自动获取)');
-            });
+            // 延迟 500ms 确保 rmGMFetch 已由管理器暴露
+            setTimeout(() => {
+                autoFetchApiKey().then(ok => {
+                    console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', ok ? '(雨云API: 自动获取成功)' : '(雨云API: 未配置，将在首次使用时自动获取)');
+                });
+            }, 500);
         } else {
             console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', '(雨云API: 已配置)');
         }
