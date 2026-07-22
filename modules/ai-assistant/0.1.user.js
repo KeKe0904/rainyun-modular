@@ -7,6 +7,7 @@
     const AI_API_KEY = cfg.ai_api_key || '';
     const AI_MODEL = cfg.ai_model || 'deepseek-chat';
     const RAINYUN_API = 'https://api.v2.rainyun.com';
+    const RAINYUN_API_KEY = cfg.rainyun_api_key || '';
 
     // 苹果风格配色
     const C = {
@@ -218,12 +219,14 @@
     let chatHistory = [];
     let isProcessing = false;
 
-    // ===== 雨云 API 请求 =====
+    // ===== 雨云 API 请求（官方 API Key 认证）=====
     async function rainyunFetch(path) {
         const resp = await fetch(RAINYUN_API + path, {
             method: 'GET',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': RAINYUN_API_KEY
+            }
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -543,6 +546,10 @@
             addMessage('ai', '请先在模块管理器中配置 AI API Key，然后刷新页面。');
             return;
         }
+        if (!RAINYUN_API_KEY) {
+            addMessage('ai', '请先在模块管理器中配置雨云 API Key（在雨云控制台设置页生成），然后刷新页面。');
+            return;
+        }
 
         isProcessing = true;
         sendBtn.disabled = true;
@@ -569,7 +576,7 @@
     function init() {
         injectStyles();
         createFab();
-        console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 API Key)');
+        console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', RAINYUN_API_KEY ? '(雨云API: 已配置)' : '(雨云API: 未配置)');
     }
 
     init();

@@ -88,6 +88,12 @@
     "script": "0.1.user.js",
     "configSchema": [
       {
+        "key": "rainyun_api_key",
+        "type": "text",
+        "label": "雨云 API Key（控制台设置页生成）",
+        "default": ""
+      },
+      {
         "key": "ai_base_url",
         "type": "text",
         "label": "AI API 地址",
