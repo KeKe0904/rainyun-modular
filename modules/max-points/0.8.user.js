@@ -64,14 +64,13 @@
                 if (result.code !== 200 || !result.data) throw new Error('接口返回异常');
 
                 const userData = result.data;
-                // 雨云积分由三个独立字段组成（来源：雨云前端 GetPoints 实现）
-                // 总积分 = Points + PointsFromProduct + LockPoints
-                // 可提现积分 = Points + PointsFromProduct（冻结积分 LockPoints 不可提现）
+                // 雨云总积分 = Points + PointsFromProduct + LockPoints（来源：雨云前端 GetPoints 实现）
+                // 直接使用总积分作为可提现积分，与页面显示一致；冻结积分由服务端校验
                 const points = userData.Points || 0;
                 const pointsFromProduct = userData.PointsFromProduct || 0;
                 const lockPoints = userData.LockPoints || 0;
                 const totalPoints = points + pointsFromProduct + lockPoints;
-                const availablePoints = points + pointsFromProduct;
+                const availablePoints = totalPoints;
 
                 // 判断提现方式
                 let feeRate = 0;
@@ -104,9 +103,10 @@
 
                 // 诊断信息：显示积分明细
                 const totalDeduct = feeRate > 0 ? Math.ceil(maxWithdraw * (1 + feeRate)) : maxWithdraw;
+                const lockHint = lockPoints > 0 ? `\n注意：含${lockPoints}冻结积分，若提现失败请减少金额` : '';
                 showToast(
                     `已填充：${maxWithdraw}（${feeLabel}，实扣${totalDeduct}）\n` +
-                    `明细：总${totalPoints} = ${points}+${pointsFromProduct}+${lockPoints}(冻结)，可提${availablePoints}`,
+                    `明细：总${totalPoints} = ${points}+${pointsFromProduct}+${lockPoints}(冻结)${lockHint}`,
                     'success',
                     6000
                 );
