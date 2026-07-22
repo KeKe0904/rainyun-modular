@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
@@ -52,16 +52,20 @@
         updateCheckInterval: 24 * 60 * 60 * 1000
     };
 
-    // 样式配置
+    // 样式配置（简约苹果风格）
     const STYLE_CONFIG = {
-        primaryColor: "#37b5c1",
-        secondaryColor: "#2f9ba3",
-        textColor: "#2c3e50",
-        backgroundColor: "#ffffff",
-        borderRadius: "12px",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
-        hoverShadow: "0 12px 40px rgba(0,0,0,0.15)",
-        primaryGlow: "rgba(55, 181, 193, 0.45)"
+        primaryColor: "#007AFF",
+        textColor: "#1d1d1f",
+        secondaryText: "#86868b",
+        backgroundColor: "rgba(255,255,255,0.78)",
+        cardColor: "rgba(120,120,128,0.08)",
+        borderColor: "rgba(0,0,0,0.06)",
+        borderRadius: "16px",
+        smallRadius: "10px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+        hoverShadow: "0 12px 40px rgba(0,0,0,0.10)",
+        primaryGlow: "rgba(0,122,255,0.3)",
+        fontStack: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
     };
 
     // 状态管理
@@ -76,35 +80,46 @@
     let managerUI = null;
     let settingsUI = null;
 
-    // 注入全局样式（呼吸动画、卡片悬停、通知样式等）
+    // 注入全局样式（简约苹果风格）
     function injectGlobalStyles() {
         GM_addStyle(`
             @keyframes rm-breath {
-                0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 0 ${STYLE_CONFIG.primaryGlow}; }
-                50%      { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 8px rgba(55, 181, 193, 0); }
+                0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 0 0 0 ${STYLE_CONFIG.primaryGlow}; }
+                50%      { box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 0 0 8px rgba(0,122,255,0); }
             }
-            .rm-floating-inner { animation: rm-breath 2.8s ease-in-out infinite; }
+            .rm-floating-inner { animation: rm-breath 3s ease-in-out infinite; }
             .rm-floating-inner:hover { animation: none; }
 
-            /* 模块卡片悬停轻微上移 */
-            .rm-module-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
-            .rm-module-card:hover { transform: translateY(-2px); }
+            .rm-module-card {
+                transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), background-color 0.2s ease;
+            }
+            .rm-module-card:hover { transform: translateY(-1px); background-color: rgba(120,120,128,0.12); }
 
-            /* 通知：左侧色条增强辨识度 */
             .rm-notification {
                 display: flex; align-items: center; gap: 8px;
-                border-left: 4px solid rgba(255,255,255,0.85);
-                padding-left: 12px;
+                padding-left: 4px;
             }
 
-            /* 自定义滚动条 */
-            .rm-scroll::-webkit-scrollbar { width: 6px; }
+            .rm-scroll::-webkit-scrollbar { width: 5px; }
             .rm-scroll::-webkit-scrollbar-track { background: transparent; }
             .rm-scroll::-webkit-scrollbar-thumb {
-                background: ${STYLE_CONFIG.primaryColor}55;
+                background: rgba(0,0,0,0.15);
                 border-radius: 3px;
             }
-            .rm-scroll::-webkit-scrollbar-thumb:hover { background: ${STYLE_CONFIG.primaryColor}99; }
+            .rm-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+
+            .rm-panel {
+                font-family: ${STYLE_CONFIG.fontStack};
+                -webkit-font-smoothing: antialiased;
+                backdrop-filter: blur(20px) saturate(180%);
+                -webkit-backdrop-filter: blur(20px) saturate(180%);
+            }
+            .rm-btn {
+                font-family: ${STYLE_CONFIG.fontStack};
+                font-weight: 500;
+                transition: opacity 0.15s ease, transform 0.1s ease;
+            }
+            .rm-btn:active { transform: scale(0.96); }
         `);
     }
 
@@ -172,103 +187,111 @@
         });
     }
 
-    // 创建悬浮按钮
+    // 创建悬浮按钮（简约苹果风格）
     function createFloatingButton() {
         const btn = document.createElement('div');
         btn.innerHTML = `
             <div class="floating-btn-inner rm-floating-inner" style="
                 background: ${STYLE_CONFIG.primaryColor};
-                width: 48px;
-                height: 48px;
-                border-radius: 50%;
+                width: 44px;
+                height: 44px;
+                border-radius: 14px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                opacity: 0.6;
+                transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+                box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+                opacity: 0.7;
             ">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="#fff" stroke-width="2" stroke-linecap="round"
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                    stroke="#fff" stroke-width="2.2" stroke-linecap="round"
                     stroke-linejoin="round">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
                 </svg>
             </div>
         `;
 
-        // 扩大悬浮检测区域（padding增加20px）
         Object.assign(btn.style, {
             position: 'fixed',
-            left: '-24px',
+            left: '-18px',
             top: '50%',
             transform: 'translateY(-50%)',
-            zIndex: '10000', // 高于弹窗
-            transition: 'all 0.3s ease',
-            padding: '20px', // 扩大悬浮检测区
-            margin: '-20px'  // 抵消padding对位置的影响
+            zIndex: '10000',
+            transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+            padding: '20px',
+            margin: '-20px'
         });
 
         const innerBtn = btn.querySelector('.floating-btn-inner');
 
-        // 鼠标进入检测区（包括周围20px）
         btn.addEventListener('mouseenter', () => {
-            btn.style.left = '20px';
+            btn.style.left = '16px';
             innerBtn.style.opacity = '1';
+            innerBtn.style.borderRadius = '22px';
         });
 
-        // 鼠标离开检测区
         btn.addEventListener('mouseleave', () => {
-            btn.style.left = '-24px';
-            innerBtn.style.opacity = '0.6';
+            btn.style.left = '-18px';
+            innerBtn.style.opacity = '0.7';
+            innerBtn.style.borderRadius = '14px';
         });
 
         btn.addEventListener('click', openManager);
         return btn;
     }
 
-    // 打开管理器界面
+    // 打开管理器界面（简约苹果风格）
     async function openManager() {
         if (managerUI) {
             managerUI.remove();
             managerUI = null;
         }
 
-        // 创建主容器（响应式：移动端全宽，PC端固定宽度）
         managerUI = document.createElement('div');
+        managerUI.className = 'rm-panel';
         const isMobile = window.innerWidth < 768;
         Object.assign(managerUI.style, {
             position: 'fixed',
             left: isMobile ? '0' : '80px',
             top: '50%',
-            transform: 'translateY(-50%)',
-            width: isMobile ? '100%' : '360px',
+            transform: 'translateY(-50%) scale(0.95)',
+            width: isMobile ? '100%' : '340px',
             maxHeight: '80vh',
             backgroundColor: STYLE_CONFIG.backgroundColor,
             borderRadius: STYLE_CONFIG.borderRadius,
             boxShadow: STYLE_CONFIG.boxShadow,
+            border: `1px solid ${STYLE_CONFIG.borderColor}`,
             zIndex: '9999',
             opacity: '0',
-            transition: 'opacity 0.3s ease, transform 0.3s ease'
+            transition: 'opacity 0.25s ease, transform 0.25s cubic-bezier(0.4,0,0.2,1)',
+            overflow: 'hidden'
         });
-
 
         // 头部
         const header = document.createElement('div');
         Object.assign(header.style, {
-            padding: '20px',
-            borderBottom: `1px solid rgba(0,0,0,0.1)`,
+            padding: '18px 20px 14px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
         });
 
-        const title = document.createElement('h3');
+        const titleWrap = document.createElement('div');
+        titleWrap.style.display = 'flex';
+        titleWrap.style.alignItems = 'center';
+        titleWrap.style.gap = '8px';
+
+        const title = document.createElement('span');
         title.textContent = '模块管理器';
         Object.assign(title.style, {
-            margin: '0',
+            fontSize: '17px',
+            fontWeight: '600',
             color: STYLE_CONFIG.textColor,
-            fontSize: '1.2em'
+            fontFamily: STYLE_CONFIG.fontStack
         });
 
         // 更新检查
@@ -278,48 +301,33 @@
             status: 'error'
         }));
 
-        const updateIndicator = document.createElement('span');
-        let statusText = '';
-        let backgroundColor = '';
-        let textColor = '';
-
+        const updateDot = document.createElement('span');
+        let dotColor = '';
         if (updateStatus.status === 'error') {
-            statusText = '检查失败';
-            backgroundColor = '#FF980033';
-            textColor = '#FF9800';
+            dotColor = '#FF9500';
         } else if (updateStatus.hasUpdate) {
-            statusText = '有更新';
-            backgroundColor = '#F4433633';
-            textColor = '#F44336';
+            dotColor = '#FF3B30';
         } else {
-            statusText = '已最新';
-            backgroundColor = '#4CAF5033';
-            textColor = '#4CAF50';
+            dotColor = '#34C759';
         }
-
-        updateIndicator.textContent = statusText;
-        updateIndicator.style.cssText = `
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 8px;
-            cursor: ${updateStatus.hasUpdate ? 'pointer' : 'default'};
-            background-color: ${backgroundColor};
-            color: ${textColor};
-        `;
-
+        Object.assign(updateDot.style, {
+            width: '7px',
+            height: '7px',
+            borderRadius: '50%',
+            backgroundColor: dotColor,
+            display: 'inline-block',
+            cursor: updateStatus.hasUpdate ? 'pointer' : 'default'
+        });
         if (updateStatus.hasUpdate) {
-            updateIndicator.onclick = () => {
-                window.open(updateStatus.updateUrl);
-            };
+            updateDot.title = '有更新，点击更新';
+            updateDot.onclick = () => window.open(updateStatus.updateUrl);
         }
 
-        title.appendChild(updateIndicator);
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(updateDot);
 
-        // 添加设置按钮
         const settingsBtn = createIconButton('⚙');
-        settingsBtn.style.marginRight = '8px';
+        settingsBtn.style.marginRight = '4px';
         settingsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openSettings();
@@ -328,10 +336,11 @@
         const closeBtn = createIconButton('✕');
         closeBtn.addEventListener('click', () => {
             managerUI.style.opacity = '0';
+            managerUI.style.transform = 'translateY(-50%) scale(0.95)';
             setTimeout(() => {
                 managerUI.remove();
-                managerUI = null; // 重置变量
-            }, 300);
+                managerUI = null;
+            }, 250);
         });
 
         const buttonsContainer = document.createElement('div');
@@ -339,19 +348,22 @@
         buttonsContainer.appendChild(settingsBtn);
         buttonsContainer.appendChild(closeBtn);
 
-        header.appendChild(title);
+        header.appendChild(titleWrap);
         header.appendChild(buttonsContainer);
+
+        // 分隔线
+        const divider = document.createElement('div');
+        divider.style.cssText = `height:1px;background:${STYLE_CONFIG.borderColor};margin:0 20px;`;
 
         // 内容区域
         const content = document.createElement('div');
         content.className = 'rm-scroll';
         Object.assign(content.style, {
-            padding: '16px',
+            padding: '14px 16px',
             overflowY: 'auto',
-            maxHeight: 'calc(80vh - 68px)'
+            maxHeight: 'calc(80vh - 70px)'
         });
 
-        // 加载模块列表
         loadModuleList().then(modules => {
             content.innerHTML = '';
             modules.forEach(module => {
@@ -360,17 +372,17 @@
         });
 
         managerUI.appendChild(header);
+        managerUI.appendChild(divider);
         managerUI.appendChild(content);
         document.body.appendChild(managerUI);
 
-        // 入场动画
         setTimeout(() => {
             managerUI.style.opacity = '1';
-            managerUI.style.transform = 'translateY(-50%) translateX(0)';
+            managerUI.style.transform = 'translateY(-50%) scale(1)';
         }, 10);
     }
 
-    // 打开设置界面
+    // 打开设置界面（简约苹果风格）
     function openSettings() {
         if (settingsUI) {
             settingsUI.remove();
@@ -378,73 +390,92 @@
             return;
         }
 
-        // 自适应检测（移动端全宽，PC端固定宽度并贴在管理器右侧）
         settingsUI = document.createElement('div');
+        settingsUI.className = 'rm-panel';
         const isMobile = window.innerWidth < 768;
         Object.assign(settingsUI.style, {
             position: 'fixed',
-            left: isMobile ? '0' : 'calc(80px + 380px)',
+            left: isMobile ? '0' : 'calc(80px + 360px)',
             top: '50%',
-            transform: 'translateY(-50%)',
-            width: isMobile ? '100%' : '300px',
-            maxHeight: '80vh',
+            transform: 'translateY(-50%) scale(0.95)',
+            width: isMobile ? '100%' : '260px',
             backgroundColor: STYLE_CONFIG.backgroundColor,
             borderRadius: STYLE_CONFIG.borderRadius,
             boxShadow: STYLE_CONFIG.boxShadow,
+            border: `1px solid ${STYLE_CONFIG.borderColor}`,
             zIndex: '9999',
             opacity: '0',
-            transition: 'opacity 0.3s ease, transform 0.3s ease',
-            padding: '20px'
+            transition: 'opacity 0.25s ease, transform 0.25s cubic-bezier(0.4,0,0.2,1)',
+            overflow: 'hidden'
         });
 
         // 头部
         const header = document.createElement('div');
-        header.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
-        `;
+        Object.assign(header.style, {
+            padding: '18px 20px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+        });
 
-        const title = document.createElement('h4');
-        title.textContent = '管理器设置';
-        title.style.margin = '0';
+        const title = document.createElement('span');
+        title.textContent = '设置';
+        Object.assign(title.style, {
+            fontSize: '17px',
+            fontWeight: '600',
+            color: STYLE_CONFIG.textColor,
+            fontFamily: STYLE_CONFIG.fontStack
+        });
 
         const closeBtn = createIconButton('✕');
         closeBtn.addEventListener('click', () => {
             settingsUI.style.opacity = '0';
+            settingsUI.style.transform = 'translateY(-50%) scale(0.95)';
             setTimeout(() => {
                 settingsUI.remove();
                 settingsUI = null;
-            }, 300);
+            }, 250);
         });
 
         header.appendChild(title);
         header.appendChild(closeBtn);
         settingsUI.appendChild(header);
 
+        const divider = document.createElement('div');
+        divider.style.cssText = `height:1px;background:${STYLE_CONFIG.borderColor};margin:0 20px;`;
+        settingsUI.appendChild(divider);
+
         // 内容区域
         const content = document.createElement('div');
-        content.style.overflowY = 'auto';
-        content.style.maxHeight = 'calc(80vh - 100px)';
+        Object.assign(content.style, {
+            padding: '16px 20px',
+            overflowY: 'auto',
+            maxHeight: 'calc(80vh - 80px)'
+        });
 
         // 数据源选择
-        const sourceSection = document.createElement('div');
-        sourceSection.style.marginBottom = '20px';
-
         const sourceLabel = document.createElement('label');
         sourceLabel.textContent = '数据源';
-        sourceLabel.style.display = 'block';
-        sourceLabel.style.marginBottom = '8px';
-        sourceLabel.style.fontWeight = 'bold';
+        Object.assign(sourceLabel.style, {
+            display: 'block',
+            marginBottom: '8px',
+            fontSize: '13px',
+            color: STYLE_CONFIG.secondaryText,
+            fontFamily: STYLE_CONFIG.fontStack
+        });
 
         const sourceSelect = document.createElement('select');
-        sourceSelect.style.width = '100%';
-        sourceSelect.style.padding = '8px';
-        sourceSelect.style.borderRadius = '4px';
-        sourceSelect.style.border = `1px solid ${STYLE_CONFIG.primaryColor}33`;
+        Object.assign(sourceSelect.style, {
+            width: '100%',
+            padding: '9px 10px',
+            borderRadius: STYLE_CONFIG.smallRadius,
+            border: `1px solid ${STYLE_CONFIG.borderColor}`,
+            backgroundColor: STYLE_CONFIG.cardColor,
+            fontSize: '14px',
+            color: STYLE_CONFIG.textColor,
+            fontFamily: STYLE_CONFIG.fontStack,
+            cursor: 'pointer'
+        });
 
         const currentSource = GM_getValue('source_name', 'Rainapp');
 
@@ -461,7 +492,6 @@
             GM_setValue('source_name', newSource);
             showNotification(`数据源已切换为 ${newSource}`, 'success');
 
-            // 重新加载模块列表
             loadModuleList().then(() => {
                 if (managerUI) {
                     managerUI.remove();
@@ -471,17 +501,14 @@
             });
         });
 
-        sourceSection.appendChild(sourceLabel);
-        sourceSection.appendChild(sourceSelect);
-        content.appendChild(sourceSection);
-
+        content.appendChild(sourceLabel);
+        content.appendChild(sourceSelect);
         settingsUI.appendChild(content);
         document.body.appendChild(settingsUI);
 
-        // 入场动画
         setTimeout(() => {
             settingsUI.style.opacity = '1';
-            settingsUI.style.transform = 'translateY(-50%) translateX(0)';
+            settingsUI.style.transform = 'translateY(-50%) scale(1)';
         }, 10);
     }
 
@@ -515,31 +542,35 @@
         }
     }
 
-    // 创建图标按钮
+    // 创建图标按钮（简约苹果风格）
     function createIconButton(icon) {
         const btn = document.createElement('div');
         btn.innerHTML = icon;
         Object.assign(btn.style, {
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
+            width: '30px',
+            height: '30px',
+            borderRadius: '8px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            transition: 'background 0.2s ease',
-            color: STYLE_CONFIG.textColor
+            transition: 'background 0.15s ease',
+            color: STYLE_CONFIG.secondaryText,
+            fontSize: '15px',
+            fontFamily: STYLE_CONFIG.fontStack
         });
         btn.addEventListener('mouseenter', () => {
-            btn.style.background = 'rgba(0,0,0,0.05)';
+            btn.style.background = STYLE_CONFIG.cardColor;
+            btn.style.color = STYLE_CONFIG.textColor;
         });
         btn.addEventListener('mouseleave', () => {
             btn.style.background = 'transparent';
+            btn.style.color = STYLE_CONFIG.secondaryText;
         });
         return btn;
     }
 
-    // 创建模块卡片
+    // 创建模块卡片（简约苹果风格）
     function createModuleCard(module) {
         const isInstalled = state.installedModules[module.id];
         const isEnabled = isInstalled ? isInstalled.enabled : false;
@@ -548,57 +579,52 @@
         const card = document.createElement('div');
         card.className = 'rm-module-card';
         Object.assign(card.style, {
-            background: '#f8fafc',
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '12px',
-            transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-            border: '1px solid rgba(0,0,0,0.05)'
+            backgroundColor: STYLE_CONFIG.cardColor,
+            borderRadius: STYLE_CONFIG.smallRadius,
+            padding: '14px',
+            marginBottom: '10px',
+            fontFamily: STYLE_CONFIG.fontStack
         });
 
-        card.onmouseover = () => {
-            card.style.boxShadow = STYLE_CONFIG.hoverShadow;
-        };
-
-        card.onmouseout = () => {
-            card.style.boxShadow = 'none';
-        };
-
         const header = document.createElement('div');
-        header.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        `;
+        Object.assign(header.style, {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '6px'
+        });
 
-        const title = document.createElement('h4');
+        const title = document.createElement('span');
         title.textContent = module.name;
-        title.style.margin = '0';
+        Object.assign(title.style, {
+            fontSize: '15px',
+            fontWeight: '600',
+            color: STYLE_CONFIG.textColor
+        });
 
         const status = document.createElement('span');
         status.textContent = isInstalled ?
             (isEnabled ? '已启用' : '已禁用') +
-            (hasUpdate ? ' (可更新)' : '') :
+            (hasUpdate ? ' · 可更新' : '') :
             '未安装';
 
-        status.style.cssText = `
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-        `;
+        Object.assign(status.style, {
+            padding: '3px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: '500'
+        });
 
         if (isInstalled) {
             status.style.backgroundColor = isEnabled ?
-                (hasUpdate ? '#FF980033' : '#4CAF5033') :
-                '#F4433633';
+                (hasUpdate ? 'rgba(255,149,0,0.12)' : 'rgba(52,199,89,0.12)') :
+                'rgba(255,59,48,0.12)';
             status.style.color = isEnabled ?
-                (hasUpdate ? '#FF9800' : '#4CAF50') :
-                '#F44336';
+                (hasUpdate ? '#FF9500' : '#34C759') :
+                '#FF3B30';
         } else {
-            status.style.backgroundColor = '#2196F333';
-            status.style.color = '#2196F3';
+            status.style.backgroundColor = 'rgba(0,122,255,0.12)';
+            status.style.color = STYLE_CONFIG.primaryColor;
         }
 
         header.appendChild(title);
@@ -606,78 +632,79 @@
 
         const description = document.createElement('p');
         description.textContent = module.description;
-        description.style.cssText = `
-            margin: 0 0 12px 0;
-            color: #666;
-            font-size: 14px;
-        `;
+        Object.assign(description.style, {
+            margin: '0 0 10px 0',
+            color: STYLE_CONFIG.secondaryText,
+            fontSize: '13px',
+            lineHeight: '1.4'
+        });
 
         const actions = document.createElement('div');
-        actions.style.cssText = `
-            display: flex;
-            gap: 8px;
-        `;
+        Object.assign(actions.style, {
+            display: 'flex',
+            gap: '8px'
+        });
 
         // 安装/卸载按钮
         const installBtn = document.createElement('button');
+        installBtn.className = 'rm-btn';
         installBtn.textContent = isInstalled ? '卸载' : '安装';
-        installBtn.style.cssText = `
-            flex: 1;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        `;
+        Object.assign(installBtn.style, {
+            flex: '1',
+            padding: '7px 12px',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '13px'
+        });
 
         if (isInstalled) {
-            installBtn.style.backgroundColor = '#F44336';
-            installBtn.style.color = 'white';
+            installBtn.style.backgroundColor = 'rgba(255,59,48,0.12)';
+            installBtn.style.color = '#FF3B30';
             installBtn.onclick = () => uninstallModule(module.id);
         } else {
-            installBtn.style.backgroundColor = '#4CAF50';
-            installBtn.style.color = 'white';
+            installBtn.style.backgroundColor = STYLE_CONFIG.primaryColor;
+            installBtn.style.color = '#fff';
             installBtn.onclick = () => installModule(module);
         }
 
         // 启用/禁用按钮
         const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'rm-btn';
         toggleBtn.textContent = isInstalled ? (isEnabled ? '禁用' : '启用') : '不可用';
-        toggleBtn.style.cssText = `
-            flex: 1;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        `;
+        Object.assign(toggleBtn.style, {
+            flex: '1',
+            padding: '7px 12px',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '13px'
+        });
 
         if (isInstalled) {
-            toggleBtn.style.backgroundColor = isEnabled ? '#F44336' : '#4CAF50';
-            toggleBtn.style.color = 'white';
+            toggleBtn.style.backgroundColor = isEnabled ? 'rgba(255,59,48,0.12)' : 'rgba(52,199,89,0.12)';
+            toggleBtn.style.color = isEnabled ? '#FF3B30' : '#34C759';
             toggleBtn.onclick = () => toggleModule(module.id);
         } else {
-            toggleBtn.style.backgroundColor = '#ccc';
-            toggleBtn.style.color = '#666';
+            toggleBtn.style.backgroundColor = STYLE_CONFIG.cardColor;
+            toggleBtn.style.color = STYLE_CONFIG.secondaryText;
             toggleBtn.disabled = true;
         }
 
         // 更新按钮
         const updateBtn = document.createElement('button');
-        updateBtn.textContent = hasUpdate ? '点击更新' : '无更新';
-        updateBtn.style.cssText = `
-            flex: 1;
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: ${hasUpdate ? 'pointer' : 'default'};
-            font-weight: bold;
-            transition: background-color 0.2s;
-            background-color: ${hasUpdate ? '#FF9800' : '#9E9E9E'};
-            color: white;
-        `;
+        updateBtn.className = 'rm-btn';
+        updateBtn.textContent = hasUpdate ? '更新' : '最新';
+        Object.assign(updateBtn.style, {
+            flex: '1',
+            padding: '7px 12px',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: hasUpdate ? 'pointer' : 'default',
+            fontSize: '13px',
+            backgroundColor: hasUpdate ? 'rgba(255,149,0,0.12)' : STYLE_CONFIG.cardColor,
+            color: hasUpdate ? '#FF9500' : STYLE_CONFIG.secondaryText
+        });
 
         if (hasUpdate) {
             updateBtn.onclick = () => installModule(module);
@@ -730,36 +757,47 @@
         if (!schema) return null;
 
         const form = document.createElement('div');
-        form.style.marginTop = '12px';
-        form.style.borderTop = '1px dashed #eee';
-        form.style.paddingTop = '12px';
+        Object.assign(form.style, {
+            marginTop: '10px',
+            borderTop: `1px solid ${STYLE_CONFIG.borderColor}`,
+            paddingTop: '10px'
+        });
 
         schema.forEach(item => {
             const wrapper = document.createElement('div');
-            wrapper.style.marginBottom = '12px';
+            wrapper.style.marginBottom = '10px';
 
             const label = document.createElement('label');
             label.textContent = item.label;
-            label.style.display = 'block';
-            label.style.marginBottom = '4px';
-            label.style.fontSize = '14px';
-            label.style.color = STYLE_CONFIG.textColor;
+            Object.assign(label.style, {
+                display: 'block',
+                marginBottom: '4px',
+                fontSize: '12px',
+                color: STYLE_CONFIG.secondaryText,
+                fontFamily: STYLE_CONFIG.fontStack
+            });
 
             let input;
+            const inputBase = {
+                width: '100%',
+                padding: '7px 10px',
+                borderRadius: '8px',
+                border: `1px solid ${STYLE_CONFIG.borderColor}`,
+                backgroundColor: STYLE_CONFIG.cardColor,
+                fontSize: '13px',
+                color: STYLE_CONFIG.textColor,
+                fontFamily: STYLE_CONFIG.fontStack,
+                boxSizing: 'border-box'
+            };
             if (item.type === 'text') {
                 input = document.createElement('input');
                 input.type = 'text';
                 input.value = module.config[item.key] || item.default;
-                input.style.width = '100%';
-                input.style.padding = '8px';
-                input.style.borderRadius = '4px';
-                input.style.border = `1px solid ${STYLE_CONFIG.primaryColor}33`;
+                Object.assign(input.style, inputBase);
             } else if (item.type === 'select') {
                 input = document.createElement('select');
-                input.style.width = '100%';
-                input.style.padding = '8px';
-                input.style.borderRadius = '4px';
-                input.style.border = `1px solid ${STYLE_CONFIG.primaryColor}33`;
+                Object.assign(input.style, inputBase);
+                Object.assign(input.style, { cursor: 'pointer' });
                 item.options.forEach(opt => {
                     const option = document.createElement('option');
                     option.value = opt;
@@ -1056,53 +1094,49 @@
         }
     }
 
-    // 显示通知
-    function showNotification(message, type = 'info') {
+    // 显示通知（简约苹果风格）
+    function showNotification(message, type = 'info', duration = 3000) {
         const notification = document.createElement('div');
-        notification.className = 'rm-notification';
-        // 根据类型选择图标
+        notification.className = 'rm-notification rm-panel';
         const iconMap = { error: '✕', success: '✓', info: 'ℹ', warning: '⚠' };
+        const colorMap = { error: '#FF3B30', success: '#34C759', info: '#007AFF', warning: '#FF9500' };
         const icon = iconMap[type] || iconMap.info;
-        notification.innerHTML = `<span style="font-size:16px;line-height:1;">${icon}</span><span>${message}</span>`;
-        notification.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 4px;
-            color: white;
-            font-weight: bold;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 99999;
-            transform: translateY(20px);
-            opacity: 0;
-            transition: transform 0.3s, opacity 0.3s;
-        `;
-
-        if (type === 'error') {
-            notification.style.backgroundColor = '#F44336';
-        } else if (type === 'success') {
-            notification.style.backgroundColor = '#4CAF50';
-        } else if (type === 'warning') {
-            notification.style.backgroundColor = '#FF9800';
-        } else {
-            notification.style.backgroundColor = '#2196F3';
-        }
+        const color = colorMap[type] || colorMap.info;
+        notification.innerHTML = `<span style="font-size:14px;line-height:1;color:${color};">${icon}</span><span style="white-space:pre-line;">${message}</span>`;
+        Object.assign(notification.style, {
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            padding: '12px 16px',
+            borderRadius: '14px',
+            color: STYLE_CONFIG.textColor,
+            fontSize: '13px',
+            fontWeight: '500',
+            fontFamily: STYLE_CONFIG.fontStack,
+            backgroundColor: 'rgba(255,255,255,0.82)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+            border: `1px solid ${STYLE_CONFIG.borderColor}`,
+            zIndex: '99999',
+            transform: 'translateY(20px) scale(0.95)',
+            opacity: '0',
+            transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease',
+            maxWidth: '320px'
+        });
 
         document.body.appendChild(notification);
 
-        // 显示通知
         setTimeout(() => {
-            notification.style.transform = 'translateY(0)';
+            notification.style.transform = 'translateY(0) scale(1)';
             notification.style.opacity = '1';
         }, 10);
 
-        // 自动关闭
         setTimeout(() => {
-            notification.style.transform = 'translateY(20px)';
+            notification.style.transform = 'translateY(20px) scale(0.95)';
             notification.style.opacity = '0';
             setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        }, duration);
     }
 
     // 初始化
