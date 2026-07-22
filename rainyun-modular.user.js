@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      2.0
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
@@ -126,7 +126,7 @@
 
             .rm-config-header {
                 display: flex; align-items: center; justify-content: space-between;
-                padding: 8px 10px; cursor: pointer; user-select: none;
+                padding: 10px 12px; cursor: pointer; user-select: none;
                 border-radius: ${STYLE_CONFIG.smallRadius};
                 background: ${STYLE_CONFIG.cardColor};
                 transition: background 0.15s ease;
@@ -146,10 +146,16 @@
             .rm-config-body {
                 overflow: hidden;
                 transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, padding 0.3s ease;
-                max-height: 600px; opacity: 1; padding: 8px 4px 0;
+                max-height: 600px; opacity: 1; padding: 10px 4px 4px;
             }
             .rm-config-body.collapsed {
                 max-height: 0; opacity: 0; padding: 0 4px;
+            }
+            .rm-config-form {
+                margin-top: 12px; margin-bottom: 12px;
+            }
+            .rm-actions {
+                margin-top: 4px;
             }
         `);
     }
@@ -702,8 +708,8 @@
         Object.assign(card.style, {
             backgroundColor: STYLE_CONFIG.cardColor,
             borderRadius: STYLE_CONFIG.smallRadius,
-            padding: '14px',
-            marginBottom: '10px',
+            padding: '16px',
+            marginBottom: '12px',
             fontFamily: STYLE_CONFIG.fontStack
         });
 
@@ -712,7 +718,7 @@
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '6px'
+            marginBottom: '8px'
         });
 
         const title = document.createElement('span');
@@ -754,13 +760,14 @@
         const description = document.createElement('p');
         description.textContent = module.description;
         Object.assign(description.style, {
-            margin: '0 0 10px 0',
+            margin: '0 0 12px 0',
             color: STYLE_CONFIG.secondaryText,
             fontSize: '13px',
             lineHeight: '1.4'
         });
 
         const actions = document.createElement('div');
+        actions.className = 'rm-actions';
         Object.assign(actions.style, {
             display: 'flex',
             gap: '8px'
@@ -772,7 +779,7 @@
         installBtn.textContent = isInstalled ? '卸载' : '安装';
         Object.assign(installBtn.style, {
             flex: '1',
-            padding: '7px 12px',
+            padding: '8px 12px',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
@@ -795,7 +802,7 @@
         toggleBtn.textContent = isInstalled ? (isEnabled ? '禁用' : '启用') : '不可用';
         Object.assign(toggleBtn.style, {
             flex: '1',
-            padding: '7px 12px',
+            padding: '8px 12px',
             border: 'none',
             borderRadius: '8px',
             cursor: 'pointer',
@@ -818,7 +825,7 @@
         updateBtn.textContent = hasUpdate ? '更新' : '最新';
         Object.assign(updateBtn.style, {
             flex: '1',
-            padding: '7px 12px',
+            padding: '8px 12px',
             border: 'none',
             borderRadius: '8px',
             cursor: hasUpdate ? 'pointer' : 'default',
@@ -878,8 +885,8 @@
         if (!schema) return null;
 
         const form = document.createElement('div');
+        form.className = 'rm-config-form';
         Object.assign(form.style, {
-            marginTop: '10px',
             borderTop: `1px solid ${STYLE_CONFIG.borderColor}`,
             paddingTop: '10px'
         });
