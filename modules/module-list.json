@@ -78,5 +78,33 @@
     "version": "0.8",
     "path": "max-points",
     "script": "0.8.user.js"
+  },
+  {
+    "id": "ai-assistant",
+    "name": "AI助手",
+    "description": "使用AI自然语言查询雨云资源信息（服务器、域名、积分等），仅支持查询操作",
+    "version": "0.1",
+    "path": "ai-assistant",
+    "script": "0.1.user.js",
+    "configSchema": [
+      {
+        "key": "ai_base_url",
+        "type": "text",
+        "label": "AI API 地址",
+        "default": "https://api.deepseek.com"
+      },
+      {
+        "key": "ai_api_key",
+        "type": "text",
+        "label": "AI API Key",
+        "default": ""
+      },
+      {
+        "key": "ai_model",
+        "type": "text",
+        "label": "模型名称",
+        "default": "deepseek-chat"
+      }
+    ]
   }
 ]
