@@ -83,9 +83,9 @@
     "id": "ai-assistant",
     "name": "AI助手",
     "description": "使用AI自然语言查询雨云资源信息（服务器、域名、积分等），仅支持查询操作",
-    "version": "0.1",
+    "version": "0.2",
     "path": "ai-assistant",
-    "script": "0.1.user.js",
+    "script": "0.2.user.js",
     "configSchema": [
       {
         "key": "rainyun_api_key",

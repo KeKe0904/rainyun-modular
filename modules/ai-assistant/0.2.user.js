@@ -387,57 +387,76 @@
         }
     ];
 
+    // 构造标准options查询参数（雨云API通用分页/筛选参数）
+    function buildOptions(extra) {
+        const opt = Object.assign({ page_no: 1, page_size: 10 }, extra || {});
+        return 'options=' + encodeURIComponent(JSON.stringify(opt));
+    }
+
+    // 带options的URL构造
+    function withOptions(path, extra) {
+        const sep = path.includes('?') ? '&' : '?';
+        return path + sep + buildOptions(extra);
+    }
+
     // ===== 工具名 → API 端点映射（基于官方API文档确认的路径）=====
     const TOOL_ROUTES = {
         // 用户模块
         get_user_info:      () => '/user/',
-        get_user_logs:      (a) => `/user/logs?log_type=${encodeURIComponent(a.log_type || '')}&page_no=${a.page_no||1}&page_size=${a.page_size||10}`,
+        get_user_logs:      (a) => withOptions('/user/logs', { log_type: a.log_type || '' }),
         get_reward_tasks:   () => '/user/reward/tasks',
-        get_withdraw_list:  () => '/user/reward/withdraw',
+        get_withdraw_list:  () => withOptions('/user/reward/withdraw'),
         get_reward_items:   () => '/user/reward/items',
         get_vip_config:     () => '/user/vip',
-        get_user_coupons:   () => '/user/coupons',
+        get_user_coupons:   () => withOptions('/user/coupons'),
         // 产品模块
         get_products:       () => '/product/',
-        get_product_ids:    (a) => `/product/id_list${a.product_type ? '?product_type=' + encodeURIComponent(a.product_type) : ''}${a.region ? (a.product_type ? '&' : '?') + 'region=' + encodeURIComponent(a.region) : ''}`,
+        get_product_ids:    (a) => {
+            let path = '/product/id_list';
+            const params = [];
+            if (a.product_type) params.push('product_type=' + encodeURIComponent(a.product_type));
+            if (a.region) params.push('region=' + encodeURIComponent(a.region));
+            params.push(buildOptions());
+            return path + '?' + params.join('&');
+        },
         // 云服务器 RCS
-        get_rcs_list:       () => '/product/rcs/',
-        get_rcs_detail:     (a) => `/product/rcs/${a.id}/`,
-        get_rcs_firewall_rules: (a) => `/product/rcs/${a.id}/firewall/rules`,
-        get_rcs_monitor:    (a) => `/product/rcs/${a.id}/monitor`,
+        get_rcs_list:       () => withOptions('/product/rcs/'),
+        get_rcs_detail:     (a) => '/product/rcs/' + a.id + '/',
+        get_rcs_firewall_rules: (a) => withOptions('/product/rcs/' + a.id + '/firewall/rules'),
+        get_rcs_monitor:    (a) => withOptions('/product/rcs/' + a.id + '/monitor'),
         get_rcs_os_list:    () => '/product/rcs/os',
         get_rcs_plans:      () => '/product/rcs/plans',
         // 游戏云 RGS
-        get_rgs_list:       () => '/product/rgs/',
-        get_rgs_detail:     (a) => `/product/rgs/${a.id}/`,
+        get_rgs_list:       () => withOptions('/product/rgs/'),
+        get_rgs_detail:     (a) => '/product/rgs/' + a.id + '/',
         // 虚拟主机 RVH
-        get_rvh_list:       () => '/product/rvh/',
-        get_rvh_detail:     (a) => `/product/rvh/${a.id}/`,
+        get_rvh_list:       () => withOptions('/product/rvh/'),
+        get_rvh_detail:     (a) => '/product/rvh/' + a.id + '/',
         // 域名 Domain
-        get_domains:        () => '/product/domain/',
-        get_domain_detail:  (a) => `/product/domain/${a.id}/`,
-        get_domain_dns:     (a) => `/product/domain/${a.id}/dns/?page_no=${a.page_no||1}&limit=${a.limit||20}`,
-        get_domain_whois:   (a) => `/product/domain/${a.id}/whois`,
-        get_domain_renew_price: (a) => `/product/domain/${a.id}/renew_price`,
+        get_domains:        () => withOptions('/product/domain/'),
+        get_domain_detail:  (a) => '/product/domain/' + a.id + '/',
+        get_domain_dns:     (a) => '/product/domain/' + a.id + '/dns/?page_no=' + (a.page_no||1) + '&limit=' + (a.limit||20),
+        get_domain_whois:   (a) => '/product/domain/' + a.id + '/whois',
+        get_domain_renew_price: (a) => '/product/domain/' + a.id + '/renew_price',
         // SSL 证书
-        get_ssl_list:       () => '/product/sslcenter/',
+        get_ssl_list:       () => withOptions('/product/sslcenter/'),
         // 工单
-        get_workorders:     () => '/workorder/',
-        get_workorder_detail: (a) => `/workorder/${a.id}`,
+        get_workorders:     () => withOptions('/workorder/'),
+        get_workorder_detail: (a) => '/workorder/' + a.id,
         // 对象存储 ROS
-        get_ros_instances:  () => '/product/ros/instance',
-        get_ros_buckets:    () => '/product/ros/bucket',
+        get_ros_instances:  () => withOptions('/product/ros/instance'),
+        get_ros_buckets:    () => withOptions('/product/ros/bucket'),
         // CDN RCDN
-        get_rcdn_instances: () => '/product/rcdn/instance',
-        get_rcdn_domains:   () => '/product/rcdn/domain',
+        get_rcdn_instances: () => withOptions('/product/rcdn/instance'),
+        get_rcdn_domains:   () => withOptions('/product/rcdn/domain'),
         // 裸金属 RBM
-        get_rbm_list:       () => '/product/rbm/',
+        get_rbm_list:       () => withOptions('/product/rbm/'),
         // 财务
-        get_orders:         () => '/expense/order',
-        get_invoice_titles: () => '/expense/invoice/title',
+        get_orders:         () => withOptions('/expense/order'),
+        get_invoice_titles: () => withOptions('/expense/invoice/title'),
         // 公共
         get_news:           () => '/news',
-        get_nodes_status:   () => '/status'
+        get_nodes_status:   () => withOptions('/status')
     };
 
     const SYSTEM_PROMPT = `你是雨云(RainYun)云平台的AI助手，运行在用户的浏览器中。你可以通过调用工具来查询用户的云资源信息。
@@ -466,16 +485,19 @@
 
     // ===== 雨云 API 请求（官方 API Key 认证）=====
     async function rainyunFetch(path) {
-        const resp = await fetch(RAINYUN_API + path, {
+        const url = RAINYUN_API + path;
+        const resp = await fetch(url, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
                 'x-api-key': RAINYUN_API_KEY
             }
         });
-        const data = await resp.json();
+        const text = await resp.text();
+        let data;
+        try { data = JSON.parse(text); } catch(e) { data = { raw: text.substring(0, 500) }; }
         if (!resp.ok) {
-            return { error: `API错误 ${resp.status}`, detail: data };
+            return { error: `雨云API错误 ${resp.status}`, url: url, detail: data };
         }
         return data;
     }
@@ -491,7 +513,7 @@
             if (str.length > 6000) str = str.substring(0, 6000) + '...(已截断)';
             return str;
         } catch (e) {
-            return JSON.stringify({ error: e.message });
+            return JSON.stringify({ error: '请求失败: ' + e.message, tool: name });
         }
     }
 
