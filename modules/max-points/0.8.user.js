@@ -64,14 +64,22 @@
                 if (result.code !== 200 || !result.data) throw new Error('接口返回异常');
 
                 const userData = result.data;
-                // 计算可用积分（总积分 - 锁定积分）
-                const availablePoints = userData.Points - (userData.LockPoints || 0);
+                // 雨云积分由三个独立字段组成（来源：雨云前端 GetPoints 实现）
+                // 总积分 = Points + PointsFromProduct + LockPoints
+                // 可提现积分 = Points + PointsFromProduct（冻结积分 LockPoints 不可提现）
+                const points = userData.Points || 0;
+                const pointsFromProduct = userData.PointsFromProduct || 0;
+                const lockPoints = userData.LockPoints || 0;
+                const totalPoints = points + pointsFromProduct + lockPoints;
+                const availablePoints = points + pointsFromProduct;
 
                 // 判断提现方式
                 let feeRate = 0;
+                let feeLabel = '无手续费';
                 const alipayRadio = document.querySelector('input[type="radio"][value="alipay"]');
                 if (alipayRadio && alipayRadio.checked) {
                     feeRate = 0.01; // 支付宝提现有1%手续费
+                    feeLabel = '1%手续费';
                 }
 
                 // 计算最大可提现积分
@@ -85,7 +93,7 @@
 
                 // 检查是否达到最低提现额度（最低60000是指用户输入的提现额）
                 if (maxWithdraw < 60000) {
-                    showToast('最低提现额度为60000积分（未含手续费）', 'warning');
+                    showToast(`可提现积分不足（${maxWithdraw}），最低需60000积分`, 'warning');
                     return;
                 }
 
@@ -94,11 +102,14 @@
                 const event = new Event('input', { bubbles: true });
                 input.dispatchEvent(event);
 
-                if (feeRate > 0) {
-                    showToast(`已填充最大可提现积分：${maxWithdraw}（含手续费后将扣除${Math.ceil(maxWithdraw * (1 + feeRate))}）`, 'success');
-                } else {
-                    showToast(`已填充最大可提现积分：${maxWithdraw}（余额提现无手续费）`, 'success');
-                }
+                // 诊断信息：显示积分明细
+                const totalDeduct = feeRate > 0 ? Math.ceil(maxWithdraw * (1 + feeRate)) : maxWithdraw;
+                showToast(
+                    `已填充：${maxWithdraw}（${feeLabel}，实扣${totalDeduct}）\n` +
+                    `明细：总${totalPoints} = ${points}+${pointsFromProduct}+${lockPoints}(冻结)，可提${availablePoints}`,
+                    'success',
+                    6000
+                );
             } catch (e) {
                 showToast('获取积分数据失败，请刷新页面', 'error');
                 console.error(e);
@@ -121,7 +132,7 @@
     }
 
     // 显示提示信息
-    function showToast(message, type = 'info') {
+    function showToast(message, type = 'info', duration = 3000) {
         const toast = document.createElement('div');
         toast.className = 'custom-toast';
         // 使用 cssText 而非直接给 style 赋字符串，兼容性更好
@@ -135,6 +146,9 @@
             border-radius: 4px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             z-index: 9999;
+            white-space: pre-line;
+            max-width: 420px;
+            line-height: 1.6;
         `;
         toast.textContent = message;
 
@@ -142,7 +156,7 @@
         setTimeout(() => {
             toast.classList.add('fade-out');
             setTimeout(() => toast.remove(), 300);
-        }, 3000);
+        }, duration);
     }
 
     function getColor(type) {
