@@ -16,7 +16,7 @@
 1. **安装管理器脚本**
    - 需要 Tampermonkey 扩展
    - 需要开启浏览器拓展程序开发者模式
-   - [点击安装管理器脚本](https://github.com/rainyun-space/rainyun-modular/raw/main/rainyun-modular.user.js)
+   - [点击安装管理器脚本](https://github.com/KeKe0904/rainyun-modular/raw/main/rainyun-modular.user.js)
 
 2. **安装功能模块**
    - 登录雨云控制台后点击左侧悬浮按钮

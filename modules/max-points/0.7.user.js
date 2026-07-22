@@ -3,14 +3,27 @@
 
     // 初始化模块
     function initModule() {
-        // 监听URL变化
+        // 监听URL变化（使用 history API + 事件，性能优于 MutationObserver 监听整个 document）
         let lastUrl = location.href;
-        new MutationObserver(() => {
+
+        const onRouteChange = () => {
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
                 checkAndInject();
             }
-        }).observe(document, {subtree: true, childList: true});
+        };
+
+        // 拦截 pushState / replaceState，覆盖 SPA 内部跳转
+        ['pushState', 'replaceState'].forEach(method => {
+            const original = history[method];
+            history[method] = function(...args) {
+                const result = original.apply(this, args);
+                onRouteChange();
+                return result;
+            };
+        });
+        window.addEventListener('popstate', onRouteChange);
+        window.addEventListener('hashchange', onRouteChange);
 
         checkAndInject();
     }
@@ -111,7 +124,8 @@
     function showToast(message, type = 'info') {
         const toast = document.createElement('div');
         toast.className = 'custom-toast';
-        toast.style = `
+        // 使用 cssText 而非直接给 style 赋字符串，兼容性更好
+        toast.style.cssText = `
             position: fixed;
             top: 20px;
             right: 20px;

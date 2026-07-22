@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
-// @updateURL    https://github.com/rainyun-space/rainyun-modular/raw/main/rainyun-modular.user.js
-// @downloadURL  https://github.com/rainyun-space/rainyun-modular/raw/main/rainyun-modular.user.js
+// @updateURL    https://github.com/KeKe0904/rainyun-modular/raw/main/rainyun-modular.user.js
+// @downloadURL  https://github.com/KeKe0904/rainyun-modular/raw/main/rainyun-modular.user.js
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_getValue
@@ -27,9 +27,9 @@
     const CONFIG = {
         sources: {
             Github: {
-                baseModuleListUrl: 'https://raw.githubusercontent.com/rainyun-space/rainyun-modular/main/modules/module-list.json',
-                baseVersionUrl: 'https://raw.githubusercontent.com/rainyun-space/rainyun-modular/main/version.json',
-                baseUrl: 'https://raw.githubusercontent.com/rainyun-space/rainyun-modular/main/modules/'
+                baseModuleListUrl: 'https://raw.githubusercontent.com/KeKe0904/rainyun-modular/main/modules/module-list.json',
+                baseVersionUrl: 'https://raw.githubusercontent.com/KeKe0904/rainyun-modular/main/version.json',
+                baseUrl: 'https://raw.githubusercontent.com/KeKe0904/rainyun-modular/main/modules/'
             },
             Rainapp: {
                 baseModuleListUrl: 'https://rainyun-modular.zzwl.top/modules/module-list.json',
@@ -59,7 +59,9 @@
         textColor: "#2c3e50",
         backgroundColor: "#ffffff",
         borderRadius: "12px",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.1)"
+        boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
+        hoverShadow: "0 12px 40px rgba(0,0,0,0.15)",
+        primaryGlow: "rgba(55, 181, 193, 0.45)"
     };
 
     // 状态管理
@@ -74,8 +76,41 @@
     let managerUI = null;
     let settingsUI = null;
 
+    // 注入全局样式（呼吸动画、卡片悬停、通知样式等）
+    function injectGlobalStyles() {
+        GM_addStyle(`
+            @keyframes rm-breath {
+                0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 0 ${STYLE_CONFIG.primaryGlow}; }
+                50%      { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 8px rgba(55, 181, 193, 0); }
+            }
+            .rm-floating-inner { animation: rm-breath 2.8s ease-in-out infinite; }
+            .rm-floating-inner:hover { animation: none; }
+
+            /* 模块卡片悬停轻微上移 */
+            .rm-module-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+            .rm-module-card:hover { transform: translateY(-2px); }
+
+            /* 通知：左侧色条增强辨识度 */
+            .rm-notification {
+                display: flex; align-items: center; gap: 8px;
+                border-left: 4px solid rgba(255,255,255,0.85);
+                padding-left: 12px;
+            }
+
+            /* 自定义滚动条 */
+            .rm-scroll::-webkit-scrollbar { width: 6px; }
+            .rm-scroll::-webkit-scrollbar-track { background: transparent; }
+            .rm-scroll::-webkit-scrollbar-thumb {
+                background: ${STYLE_CONFIG.primaryColor}55;
+                border-radius: 3px;
+            }
+            .rm-scroll::-webkit-scrollbar-thumb:hover { background: ${STYLE_CONFIG.primaryColor}99; }
+        `);
+    }
+
     // 初始化
     async function init() {
+        injectGlobalStyles();
         loadInstalledModules();
         document.body.appendChild(createFloatingButton());
         await checkForUpdates();
@@ -141,7 +176,7 @@
     function createFloatingButton() {
         const btn = document.createElement('div');
         btn.innerHTML = `
-            <div class="floating-btn-inner" style="
+            <div class="floating-btn-inner rm-floating-inner" style="
                 background: ${STYLE_CONFIG.primaryColor};
                 width: 48px;
                 height: 48px;
@@ -199,42 +234,24 @@
             managerUI = null;
         }
 
-        // 创建主容器
-        // 自适应检测
-        if (window.innerWidth < 768) {
-            managerUI = document.createElement('div');
-            Object.assign(managerUI.style, {
-                position: 'fixed',
-                left: '0', // 距离左侧距离
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '100%',
-                maxHeight: '80vh',
-                backgroundColor: STYLE_CONFIG.backgroundColor,
-                borderRadius: STYLE_CONFIG.borderRadius,
-                boxShadow: STYLE_CONFIG.boxShadow,
-                zIndex: '9999',
-                opacity: '0',
-                transition: 'opacity 0.3s ease, transform 0.3s ease'
-            });
-        } else {
-            managerUI = document.createElement('div');
-            Object.assign(managerUI.style, {
-                position: 'fixed',
-                left: '80px', // 距离左侧距离
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '360px',
-                maxHeight: '80vh',
-                backgroundColor: STYLE_CONFIG.backgroundColor,
-                borderRadius: STYLE_CONFIG.borderRadius,
-                boxShadow: STYLE_CONFIG.boxShadow,
-                zIndex: '9999',
-                opacity: '0',
-                transition: 'opacity 0.3s ease, transform 0.3s ease'
-            });
-        }
-        
+        // 创建主容器（响应式：移动端全宽，PC端固定宽度）
+        managerUI = document.createElement('div');
+        const isMobile = window.innerWidth < 768;
+        Object.assign(managerUI.style, {
+            position: 'fixed',
+            left: isMobile ? '0' : '80px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: isMobile ? '100%' : '360px',
+            maxHeight: '80vh',
+            backgroundColor: STYLE_CONFIG.backgroundColor,
+            borderRadius: STYLE_CONFIG.borderRadius,
+            boxShadow: STYLE_CONFIG.boxShadow,
+            zIndex: '9999',
+            opacity: '0',
+            transition: 'opacity 0.3s ease, transform 0.3s ease'
+        });
+
 
         // 头部
         const header = document.createElement('div');
@@ -327,6 +344,7 @@
 
         // 内容区域
         const content = document.createElement('div');
+        content.className = 'rm-scroll';
         Object.assign(content.style, {
             padding: '16px',
             overflowY: 'auto',
@@ -360,42 +378,24 @@
             return;
         }
 
-        // 自适应检测
-        if (window.innerWidth < 768) {
-            settingsUI = document.createElement('div');
-            Object.assign(settingsUI.style, {
-                position: 'fixed',
-                left: '0', // 最左侧
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '100%',
-                maxHeight: '80vh',
-                backgroundColor: STYLE_CONFIG.backgroundColor,
-                borderRadius: STYLE_CONFIG.borderRadius,
-                boxShadow: STYLE_CONFIG.boxShadow,
-                zIndex: '9999',
-                opacity: '0',
-                transition: 'opacity 0.3s ease, transform 0.3s ease',
-                padding: '20px'
-            });
-        } else {
-            settingsUI = document.createElement('div');
-            Object.assign(settingsUI.style, {
-                position: 'fixed',
-                left: 'calc(80px + 380px)', // 在管理器右侧
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '300px',
-                maxHeight: '80vh',
-                backgroundColor: STYLE_CONFIG.backgroundColor,
-                borderRadius: STYLE_CONFIG.borderRadius,
-                boxShadow: STYLE_CONFIG.boxShadow,
-                zIndex: '9999',
-                opacity: '0',
-                transition: 'opacity 0.3s ease, transform 0.3s ease',
-                padding: '20px'
-            });
-        }
+        // 自适应检测（移动端全宽，PC端固定宽度并贴在管理器右侧）
+        settingsUI = document.createElement('div');
+        const isMobile = window.innerWidth < 768;
+        Object.assign(settingsUI.style, {
+            position: 'fixed',
+            left: isMobile ? '0' : 'calc(80px + 380px)',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: isMobile ? '100%' : '300px',
+            maxHeight: '80vh',
+            backgroundColor: STYLE_CONFIG.backgroundColor,
+            borderRadius: STYLE_CONFIG.borderRadius,
+            boxShadow: STYLE_CONFIG.boxShadow,
+            zIndex: '9999',
+            opacity: '0',
+            transition: 'opacity 0.3s ease, transform 0.3s ease',
+            padding: '20px'
+        });
 
         // 头部
         const header = document.createElement('div');
@@ -546,17 +546,18 @@
         const hasUpdate = module.hasUpdate || false;
 
         const card = document.createElement('div');
+        card.className = 'rm-module-card';
         Object.assign(card.style, {
             background: '#f8fafc',
             borderRadius: '8px',
             padding: '16px',
             marginBottom: '12px',
-            transition: 'box-shadow 0.3s ease',
+            transition: 'transform 0.25s ease, box-shadow 0.25s ease',
             border: '1px solid rgba(0,0,0,0.05)'
         });
 
         card.onmouseover = () => {
-            card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+            card.style.boxShadow = STYLE_CONFIG.hoverShadow;
         };
 
         card.onmouseout = () => {
@@ -997,7 +998,8 @@
                 const installedModule = state.installedModules[moduleId];
                 const remoteModule = state.modules.find(m => m.id === moduleId);
 
-                if (remoteModule && remoteModule.version > installedModule.version) {
+                // 使用 compareVersions 替代字符串比较，避免 0.10 < 0.9 之类的错误判断
+                if (remoteModule && compareVersions(remoteModule.version, installedModule.version) > 0) {
                     updateAvailable = true;
                     installedModule.updateAvailable = true;
                     GM_setValue(`module_${moduleId}`, JSON.stringify(installedModule));
@@ -1040,7 +1042,7 @@
                 return;
             }
 
-            if (remoteModule.version > installedModule.version) {
+            if (compareVersions(remoteModule.version, installedModule.version) > 0) {
                 const confirmUpdate = confirm(`发现更新: ${installedModule.name} ${installedModule.version} → ${remoteModule.version}\n是否更新?`);
                 if (confirmUpdate) {
                     await installModule(remoteModule);
@@ -1057,7 +1059,11 @@
     // 显示通知
     function showNotification(message, type = 'info') {
         const notification = document.createElement('div');
-        notification.textContent = message;
+        notification.className = 'rm-notification';
+        // 根据类型选择图标
+        const iconMap = { error: '✕', success: '✓', info: 'ℹ', warning: '⚠' };
+        const icon = iconMap[type] || iconMap.info;
+        notification.innerHTML = `<span style="font-size:16px;line-height:1;">${icon}</span><span>${message}</span>`;
         notification.style.cssText = `
             position: fixed;
             bottom: 20px;
@@ -1077,6 +1083,8 @@
             notification.style.backgroundColor = '#F44336';
         } else if (type === 'success') {
             notification.style.backgroundColor = '#4CAF50';
+        } else if (type === 'warning') {
+            notification.style.backgroundColor = '#FF9800';
         } else {
             notification.style.backgroundColor = '#2196F3';
         }

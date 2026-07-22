@@ -81,14 +81,26 @@
 
     // 初始化模块
     function initModule() {
-        // 设置监听逻辑
+        // 监听URL变化（使用 history API + 事件，性能优于 MutationObserver 监听整个 document）
         let lastUrl = location.href;
-        new MutationObserver(() => {
+
+        const onRouteChange = () => {
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
                 checkAndInject();
             }
-        }).observe(document, {subtree: true, childList: true});
+        };
+
+        ['pushState', 'replaceState'].forEach(method => {
+            const original = history[method];
+            history[method] = function(...args) {
+                const result = original.apply(this, args);
+                onRouteChange();
+                return result;
+            };
+        });
+        window.addEventListener('popstate', onRouteChange);
+        window.addEventListener('hashchange', onRouteChange);
 
         checkAndInject();
     }
@@ -150,7 +162,8 @@
 
         const arrow = document.createElement('span');
         arrow.innerHTML = '▼';
-        arrow.style = `
+        // 使用 cssText 而非直接给 style 赋字符串，兼容性更好
+        arrow.style.cssText = `
             float: right;
             transition: transform 0.3s;
             font-size: 14px;
