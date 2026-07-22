@@ -7,7 +7,8 @@
     const AI_API_KEY = cfg.ai_api_key || '';
     const AI_MODEL = cfg.ai_model || 'deepseek-chat';
     const RAINYUN_API = 'https://api.v2.rainyun.com';
-    const RAINYUN_API_KEY = cfg.rainyun_api_key || '';
+    let RAINYUN_API_KEY = cfg.rainyun_api_key || '';
+    let autoFetchedKey = false;
 
     // 苹果风格配色
     const C = {
@@ -483,6 +484,28 @@
     let chatHistory = [];
     let isProcessing = false;
 
+    // ===== 自动获取雨云 API Key（通过登录 Cookie）=====
+    async function autoFetchApiKey() {
+        try {
+            const resp = await fetch(RAINYUN_API + '/user/?no_cache=true', {
+                method: 'GET',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!resp.ok) return false;
+            const data = await resp.json();
+            const key = data.APIKey || (data.data && data.data.APIKey);
+            if (key) {
+                RAINYUN_API_KEY = key;
+                autoFetchedKey = true;
+                return true;
+            }
+        } catch (e) {
+            console.warn('[AI助手] 自动获取API Key失败:', e.message);
+        }
+        return false;
+    }
+
     // ===== 雨云 API 请求（官方 API Key 认证）=====
     async function rainyunFetch(path) {
         const url = RAINYUN_API + path;
@@ -800,8 +823,34 @@
             addMessage('ai', '请先在模块管理器中配置 AI API Key，然后刷新页面。');
             return;
         }
+
+        // 雨云 API Key：优先用配置的，没有则自动获取
         if (!RAINYUN_API_KEY) {
-            addMessage('ai', '请先在模块管理器中配置雨云 API Key（在雨云控制台设置页生成），然后刷新页面。');
+            addTypingIndicator();
+            addMessage('user', text);
+            const ok = await autoFetchApiKey();
+            removeTypingIndicator();
+            if (!ok) {
+                addMessage('ai', '未能自动获取雨云 API Key。请确保已登录雨云控制台，或在模块配置中手动填写 API Key（在控制台设置页生成）。');
+                return;
+            }
+            addMessage('ai', `已自动获取雨云 API Key，正在处理你的问题...`);
+            isProcessing = true;
+            sendBtn.disabled = true;
+            inputEl.value = '';
+            addTypingIndicator();
+            try {
+                const reply = await processMessage(text);
+                removeTypingIndicator();
+                addMessage('ai', reply);
+            } catch (e) {
+                removeTypingIndicator();
+                addMessage('ai', `出错了：${e.message}\n\n请检查 AI API 配置是否正确。`);
+            } finally {
+                isProcessing = false;
+                sendBtn.disabled = false;
+                inputEl.focus();
+            }
             return;
         }
 
@@ -830,7 +879,14 @@
     function init() {
         injectStyles();
         createFab();
-        console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', RAINYUN_API_KEY ? '(雨云API: 已配置)' : '(雨云API: 未配置)');
+        // 启动时自动获取雨云 API Key（如果未配置）
+        if (!RAINYUN_API_KEY) {
+            autoFetchApiKey().then(ok => {
+                console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', ok ? '(雨云API: 自动获取成功)' : '(雨云API: 未配置，将在首次使用时自动获取)');
+            });
+        } else {
+            console.log('[AI助手] 模块已启动', AI_API_KEY ? `(模型: ${AI_MODEL})` : '(未配置 AI API Key)', '(雨云API: 已配置)');
+        }
     }
 
     init();
