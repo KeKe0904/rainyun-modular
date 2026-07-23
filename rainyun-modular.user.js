@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         雨云控制台模块管理器
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  雨云控制台功能模块管理器，支持模块的安装、卸载、启用、禁用和更新
 // @author       ndxzzy, DeepSeek
 // @match        https://app.rainyun.com/*
@@ -18,6 +18,7 @@
 // @grant        GM_addStyle
 // @grant        unsafeWindow
 // @connect      github.com
+// @connect      raw.githubusercontent.com
 // @connect      rainyun-modular.zzwl.top
 // @connect      api.v2.rainyun.com
 // @connect      app.rainyun.com
@@ -49,8 +50,8 @@
             return `${source.baseUrl}${path}/${script}?t=${Math.floor(Date.now()/60000)}`;
         },
         getCurrentSource: function() {
-            const sourceName = GM_getValue('source_name', 'Rainapp');
-            return this.sources[sourceName] || this.sources['Rainapp'];
+            const sourceName = GM_getValue('source_name', 'Github');
+            return this.sources[sourceName] || this.sources.Github;
         },
         updateCheckInterval: 24 * 60 * 60 * 1000
     };
@@ -66,33 +67,27 @@
         borderRadius: "16px",
         smallRadius: "10px",
         boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-        hoverShadow: "0 12px 40px rgba(0,0,0,0.10)",
-        primaryGlow: "rgba(0,122,255,0.3)",
         fontStack: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
     };
 
     // 状态管理
     const state = {
         menuCommands: [],
-        modules: {},
+        modules: [],
         installedModules: {},
-        settingsOpen: false
+        moduleListError: null,
+        moduleListLoadedAt: 0,
+        moduleListSource: null
     };
 
     // DOM元素
     let managerUI = null;
     let settingsUI = null;
+    let moduleListRequest = null;
 
     // 注入全局样式（简约苹果风格）
     function injectGlobalStyles() {
         GM_addStyle(`
-            @keyframes rm-breath {
-                0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 0 0 0 ${STYLE_CONFIG.primaryGlow}; }
-                50%      { box-shadow: 0 2px 12px rgba(0,0,0,0.12), 0 0 0 8px rgba(0,122,255,0); }
-            }
-            .rm-floating-inner { animation: rm-breath 3s ease-in-out infinite; }
-            .rm-floating-inner:hover { animation: none; }
-
             .rm-module-card {
                 transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), background-color 0.2s ease;
             }
@@ -120,12 +115,22 @@
             .rm-btn {
                 font-family: ${STYLE_CONFIG.fontStack};
                 font-weight: 500;
+                min-height: 44px;
                 transition: opacity 0.15s ease, transform 0.1s ease;
             }
             .rm-btn:active { transform: scale(0.96); }
+            .rm-btn:focus-visible,
+            .rm-icon-btn:focus-visible,
+            .rm-floating-button:focus-visible,
+            .rm-config-header:focus-visible {
+                outline: 2px solid ${STYLE_CONFIG.primaryColor};
+                outline-offset: 2px;
+            }
+            .rm-btn:disabled { cursor: not-allowed !important; opacity: 0.55; }
 
             .rm-config-header {
                 display: flex; align-items: center; justify-content: space-between;
+                width: 100%; min-height: 44px; border: 0;
                 padding: 10px 12px; cursor: pointer; user-select: none;
                 border-radius: ${STYLE_CONFIG.smallRadius};
                 background: ${STYLE_CONFIG.cardColor};
@@ -157,49 +162,60 @@
             .rm-actions {
                 margin-top: 4px;
             }
+            .rm-panel input, .rm-panel select { min-height: 44px; }
+            @media (prefers-reduced-motion: reduce) {
+                .rm-floating-inner, .rm-module-card, .rm-panel, .rm-notification,
+                .rm-btn, .rm-config-arrow, .rm-config-body {
+                    animation: none !important;
+                    transition-duration: 0.01ms !important;
+                }
+            }
         `);
+    }
+
+    // 统一使用 Userscript 请求，避免页面 CSP/CORS 影响模块源和 API 请求。
+    function gmFetch(input, init = {}) {
+        const inputOptions = typeof input === 'object' ? input : {};
+        const url = typeof input === 'string' ? input : input.url;
+        const method = init.method || inputOptions.method || 'GET';
+        const body = init.body ?? inputOptions.body ?? null;
+        let headers = init.headers || inputOptions.headers || {};
+
+        if (typeof headers.forEach === 'function') {
+            const normalizedHeaders = {};
+            headers.forEach((value, key) => { normalizedHeaders[key] = value; });
+            headers = normalizedHeaders;
+        }
+
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method,
+                url,
+                headers,
+                data: body,
+                anonymous: false,
+                timeout: init.timeout || 15000,
+                onload: (response) => {
+                    resolve({
+                        ok: response.status >= 200 && response.status < 300,
+                        status: response.status,
+                        statusText: response.statusText,
+                        text: () => Promise.resolve(response.responseText),
+                        json: () => {
+                            try { return Promise.resolve(JSON.parse(response.responseText)); }
+                            catch (error) { return Promise.reject(error); }
+                        }
+                    });
+                },
+                onerror: () => reject(new Error('网络请求失败')),
+                ontimeout: () => reject(new Error('网络请求超时')),
+                onabort: () => reject(new Error('网络请求已中止'))
+            });
+        });
     }
 
     // 暴露 GM_xmlhttpRequest 到页面上下文（供模块绕过 CORS 并携带 Cookie）
     function exposeGMFetch() {
-        const gmFetch = function(input, init) {
-            init = init || {};
-            const url = typeof input === 'string' ? input : (input.url || input);
-            const method = init.method || (typeof input === 'object' && input.method) || 'GET';
-            const body = init.body || (typeof input === 'object' && input.body) || null;
-            // 规范化 headers
-            let headers = init.headers || (typeof input === 'object' && input.headers) || {};
-            if (headers instanceof Headers) {
-                const obj = {};
-                headers.forEach((v, k) => { obj[k] = v; });
-                headers = obj;
-            }
-            return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: method,
-                    url: url,
-                    headers: headers,
-                    data: body,
-                    anonymous: false, // 携带 Cookie（跨域也可）
-                    timeout: 30000,
-                    onload: (response) => {
-                        resolve({
-                            ok: response.status >= 200 && response.status < 300,
-                            status: response.status,
-                            statusText: response.statusText,
-                            text: () => Promise.resolve(response.responseText),
-                            json: () => {
-                                try { return Promise.resolve(JSON.parse(response.responseText)); }
-                                catch (e) { return Promise.reject(e); }
-                            }
-                        });
-                    },
-                    onerror: () => reject(new Error('GM_xmlhttpRequest 网络错误')),
-                    ontimeout: () => reject(new Error('GM_xmlhttpRequest 超时')),
-                    onabort: () => reject(new Error('GM_xmlhttpRequest 已中止'))
-                });
-            });
-        };
         try {
             unsafeWindow.rmGMFetch = gmFetch;
         } catch (e) {
@@ -241,21 +257,29 @@
     }
 
     // 初始化
-    async function init() {
+    function init() {
         injectGlobalStyles();
         exposeGMFetch();
         exposeConfigUpdater();
         loadInstalledModules();
+        state.modules = loadCachedModuleList();
         document.body.appendChild(createFloatingButton());
-        await checkForUpdates();
         registerMenuCommands();
-        await loadModuleList();
 
-        // 新增自启动逻辑
-        if (document.readyState === 'complete') {
-            autoStartModules();
+        // 本地模块启动不依赖远程更新服务。
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', autoStartModules, { once: true });
         } else {
-            window.addEventListener('load', () => autoStartModules());
+            autoStartModules();
+        }
+
+        void initializeRemoteState();
+    }
+
+    async function initializeRemoteState() {
+        await checkForUpdates();
+        if (state.modules.length === 0) {
+            await loadModuleList();
         }
     }
 
@@ -293,7 +317,7 @@
 
         // 注册新命令
         state.menuCommands.push(GM_registerMenuCommand('打开脚本管理器', openManager));
-        state.menuCommands.push(GM_registerMenuCommand('检查脚本更新', checkForUpdates));
+        state.menuCommands.push(GM_registerMenuCommand('检查脚本更新', () => checkForUpdates(true)));
 
         // 为已安装模块添加快速开关
         Object.keys(state.installedModules).forEach(moduleId => {
@@ -308,7 +332,11 @@
 
     // 创建悬浮按钮（简约苹果风格）
     function createFloatingButton() {
-        const btn = document.createElement('div');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rm-floating-button';
+        btn.setAttribute('aria-label', '打开模块管理器');
+        btn.title = '打开模块管理器';
         btn.innerHTML = `
             <div class="floating-btn-inner rm-floating-inner" style="
                 background: ${STYLE_CONFIG.primaryColor};
@@ -342,7 +370,9 @@
             zIndex: '10000',
             transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
             padding: '20px',
-            margin: '-20px'
+            margin: '-20px',
+            border: '0',
+            background: 'transparent'
         });
 
         const innerBtn = btn.querySelector('.floating-btn-inner');
@@ -364,7 +394,7 @@
     }
 
     // 打开管理器界面（简约苹果风格）
-    async function openManager() {
+    function openManager() {
         if (managerUI) {
             managerUI.remove();
             managerUI = null;
@@ -377,6 +407,8 @@
 
         managerUI = document.createElement('div');
         managerUI.className = 'rm-panel';
+        managerUI.setAttribute('role', 'dialog');
+        managerUI.setAttribute('aria-label', '模块管理器');
         const isMobile = window.innerWidth < 768;
         Object.assign(managerUI.style, {
             position: 'fixed',
@@ -384,6 +416,8 @@
             top: '50%',
             transform: 'translateY(-50%) scale(0.95)',
             width: isMobile ? '100%' : '340px',
+            maxWidth: '100vw',
+            boxSizing: 'border-box',
             maxHeight: '80vh',
             backgroundColor: STYLE_CONFIG.backgroundColor,
             borderRadius: STYLE_CONFIG.borderRadius,
@@ -418,53 +452,50 @@
             fontFamily: STYLE_CONFIG.fontStack
         });
 
-        // 更新检查
-        const updateStatus = await checkSelfUpdate().catch(() => ({
-            hasUpdate: false,
-            error: '检查失败',
-            status: 'error'
-        }));
-
-        const updateDot = document.createElement('span');
-        let dotColor = '';
-        if (updateStatus.status === 'error') {
-            dotColor = '#FF9500';
-        } else if (updateStatus.hasUpdate) {
-            dotColor = '#FF3B30';
-        } else {
-            dotColor = '#34C759';
-        }
+        // 更新状态异步加载，避免网络请求阻塞面板打开。
+        const updateDot = document.createElement('button');
+        updateDot.type = 'button';
+        updateDot.disabled = true;
+        updateDot.setAttribute('aria-label', '正在检查管理器更新');
         Object.assign(updateDot.style, {
-            width: '7px',
-            height: '7px',
+            width: '28px',
+            height: '28px',
+            padding: '10px',
             borderRadius: '50%',
-            backgroundColor: dotColor,
-            display: 'inline-block',
-            cursor: updateStatus.hasUpdate ? 'pointer' : 'default'
+            backgroundColor: '#86868b',
+            backgroundClip: 'content-box',
+            border: '0',
+            display: 'inline-block'
         });
-        if (updateStatus.hasUpdate) {
-            updateDot.title = '有更新，点击更新';
-            updateDot.onclick = () => window.open(updateStatus.updateUrl);
-        }
 
         titleWrap.appendChild(title);
         titleWrap.appendChild(updateDot);
 
-        const settingsBtn = createIconButton('⚙');
+        const settingsBtn = createIconButton('⚙', '打开设置');
         settingsBtn.style.marginRight = '4px';
         settingsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openSettings();
         });
 
-        const closeBtn = createIconButton('✕');
-        closeBtn.addEventListener('click', () => {
-            managerUI.style.opacity = '0';
-            managerUI.style.transform = 'translateY(-50%) scale(0.95)';
+        const closeBtn = createIconButton('✕', '关闭模块管理器');
+        const closeManager = () => {
+            const panel = managerUI;
+            if (!panel) return;
+            if (settingsUI) {
+                settingsUI.remove();
+                settingsUI = null;
+            }
+            panel.style.opacity = '0';
+            panel.style.transform = 'translateY(-50%) scale(0.95)';
             setTimeout(() => {
-                managerUI.remove();
-                managerUI = null;
+                panel.remove();
+                if (managerUI === panel) managerUI = null;
             }, 250);
+        };
+        closeBtn.addEventListener('click', closeManager);
+        managerUI.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeManager();
         });
 
         const buttonsContainer = document.createElement('div');
@@ -488,21 +519,55 @@
             maxHeight: 'calc(80vh - 70px)'
         });
 
-        loadModuleList().then(modules => {
-            content.innerHTML = '';
-            modules.forEach(module => {
-                content.appendChild(createModuleCard(module));
-            });
-        });
+        const renderModules = (modules, isLoading = false) => {
+            content.replaceChildren();
+            if (modules.length === 0) {
+                const emptyState = document.createElement('p');
+                emptyState.textContent = isLoading
+                    ? '正在加载模块...'
+                    : state.moduleListError ? '模块列表加载失败，请稍后重试' : '暂无可用模块';
+                Object.assign(emptyState.style, {
+                    margin: '24px 0',
+                    color: STYLE_CONFIG.secondaryText,
+                    fontSize: '13px',
+                    textAlign: 'center'
+                });
+                content.appendChild(emptyState);
+                return;
+            }
+            modules.forEach(module => content.appendChild(createModuleCard(module)));
+        };
+
+        renderModules(state.modules, state.modules.length === 0);
+        loadModuleList().then(renderModules);
 
         managerUI.appendChild(header);
         managerUI.appendChild(divider);
         managerUI.appendChild(content);
         document.body.appendChild(managerUI);
 
+        void checkSelfUpdate().then(updateStatus => {
+            if (!updateDot.isConnected) return;
+            updateDot.disabled = !updateStatus.hasUpdate;
+            updateDot.style.backgroundColor = updateStatus.status === 'error'
+                ? '#FF9500'
+                : updateStatus.hasUpdate ? '#FF3B30' : '#34C759';
+            updateDot.style.cursor = updateStatus.hasUpdate ? 'pointer' : 'default';
+            updateDot.setAttribute('aria-label', updateStatus.status === 'error'
+                ? '管理器更新检查失败'
+                : updateStatus.hasUpdate ? '发现管理器更新，点击安装' : '管理器已是最新版本');
+            updateDot.title = updateDot.getAttribute('aria-label');
+            if (updateStatus.hasUpdate) {
+                updateDot.onclick = () => window.open(updateStatus.updateUrl, '_blank', 'noopener,noreferrer');
+            }
+        });
+
+        const openedManager = managerUI;
         setTimeout(() => {
-            managerUI.style.opacity = '1';
-            managerUI.style.transform = 'translateY(-50%) scale(1)';
+            if (!openedManager.isConnected) return;
+            openedManager.style.opacity = '1';
+            openedManager.style.transform = 'translateY(-50%) scale(1)';
+            settingsBtn.focus({ preventScroll: true });
         }, 10);
     }
 
@@ -511,12 +576,22 @@
         if (settingsUI) {
             settingsUI.remove();
             settingsUI = null;
+            if (managerUI) {
+                managerUI.inert = false;
+                managerUI.removeAttribute('aria-hidden');
+            }
             return;
         }
 
         settingsUI = document.createElement('div');
         settingsUI.className = 'rm-panel';
+        settingsUI.setAttribute('role', 'dialog');
+        settingsUI.setAttribute('aria-label', '模块管理器设置');
         const isMobile = window.innerWidth < 768;
+        if (isMobile && managerUI) {
+            managerUI.inert = true;
+            managerUI.setAttribute('aria-hidden', 'true');
+        }
         Object.assign(settingsUI.style, {
             position: 'fixed',
             // 移动端：覆盖在管理器上方；桌面端：紧贴管理器右侧（间距12px）
@@ -524,6 +599,8 @@
             top: '50%',
             transform: 'translateY(-50%) scale(0.95)',
             width: isMobile ? '100%' : '260px',
+            maxWidth: '100vw',
+            boxSizing: 'border-box',
             maxHeight: '80vh',
             backgroundColor: STYLE_CONFIG.backgroundColor,
             borderRadius: STYLE_CONFIG.borderRadius,
@@ -554,14 +631,25 @@
             fontFamily: STYLE_CONFIG.fontStack
         });
 
-        const closeBtn = createIconButton('✕');
-        closeBtn.addEventListener('click', () => {
-            settingsUI.style.opacity = '0';
-            settingsUI.style.transform = 'translateY(-50%) scale(0.95)';
+        const closeBtn = createIconButton('✕', '关闭设置');
+        const closeSettings = () => {
+            const panel = settingsUI;
+            if (!panel) return;
+            panel.style.opacity = '0';
+            panel.style.transform = 'translateY(-50%) scale(0.95)';
             setTimeout(() => {
-                settingsUI.remove();
-                settingsUI = null;
+                panel.remove();
+                if (settingsUI === panel) settingsUI = null;
+                if (managerUI) {
+                    managerUI.inert = false;
+                    managerUI.removeAttribute('aria-hidden');
+                    managerUI.querySelector('[aria-label="打开设置"]')?.focus();
+                }
             }, 250);
+        };
+        closeBtn.addEventListener('click', closeSettings);
+        settingsUI.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeSettings();
         });
 
         header.appendChild(title);
@@ -592,6 +680,8 @@
         });
 
         const sourceSelect = document.createElement('select');
+        sourceSelect.id = 'rm-source-select';
+        sourceLabel.htmlFor = sourceSelect.id;
         Object.assign(sourceSelect.style, {
             width: '100%',
             padding: '9px 10px',
@@ -604,7 +694,7 @@
             cursor: 'pointer'
         });
 
-        const currentSource = GM_getValue('source_name', 'Rainapp');
+        const currentSource = GM_getValue('source_name', 'Github');
 
         Object.keys(CONFIG.sources).forEach(sourceName => {
             const option = document.createElement('option');
@@ -617,6 +707,9 @@
         sourceSelect.addEventListener('change', () => {
             const newSource = sourceSelect.value;
             GM_setValue('source_name', newSource);
+            state.modules = loadCachedModuleList();
+            state.moduleListLoadedAt = 0;
+            state.moduleListSource = null;
             showNotification(`数据源已切换为 ${newSource}`, 'success');
 
             loadModuleList().then(() => {
@@ -633,9 +726,12 @@
         settingsUI.appendChild(content);
         document.body.appendChild(settingsUI);
 
+        const openedSettings = settingsUI;
         setTimeout(() => {
-            settingsUI.style.opacity = '1';
-            settingsUI.style.transform = 'translateY(-50%) scale(1)';
+            if (!openedSettings.isConnected) return;
+            openedSettings.style.opacity = '1';
+            openedSettings.style.transform = 'translateY(-50%) scale(1)';
+            closeBtn.focus({ preventScroll: true });
         }, 10);
     }
 
@@ -645,10 +741,15 @@
             const source = CONFIG.getCurrentSource();
             const versionUrl = `${source.baseVersionUrl}?t=${Math.floor(Date.now()/60000)}`;
 
-            const response = await fetch(versionUrl);
+            const response = await gmFetch(versionUrl);
             if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
 
             const versionInfo = await response.json();
+            if (typeof versionInfo.version !== 'string' || !/^\d+(\.\d+)*$/.test(versionInfo.version)) {
+                throw new Error('远程版本格式无效');
+            }
+            const updateUrl = new URL(versionInfo.updateUrl);
+            if (updateUrl.protocol !== 'https:') throw new Error('更新地址无效');
             const versionComparison = compareVersions(versionInfo.version, currentVersion);
 
             return {
@@ -656,7 +757,7 @@
                 hasUpdate: versionComparison > 0,
                 currentVersion,
                 remoteVersion: versionInfo.version,
-                updateUrl: versionInfo.updateUrl,
+                updateUrl: updateUrl.href,
                 isDowngrade: versionComparison < 0
             };
         } catch (error) {
@@ -670,12 +771,16 @@
     }
 
     // 创建图标按钮（简约苹果风格）
-    function createIconButton(icon) {
-        const btn = document.createElement('div');
-        btn.innerHTML = icon;
+    function createIconButton(icon, label) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rm-icon-btn';
+        btn.textContent = icon;
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
         Object.assign(btn.style, {
-            width: '30px',
-            height: '30px',
+            width: '44px',
+            height: '44px',
             borderRadius: '8px',
             display: 'flex',
             alignItems: 'center',
@@ -684,7 +789,10 @@
             transition: 'background 0.15s ease',
             color: STYLE_CONFIG.secondaryText,
             fontSize: '15px',
-            fontFamily: STYLE_CONFIG.fontStack
+            fontFamily: STYLE_CONFIG.fontStack,
+            border: '0',
+            background: 'transparent',
+            padding: '0'
         });
         btn.addEventListener('mouseenter', () => {
             btn.style.background = STYLE_CONFIG.cardColor;
@@ -883,6 +991,7 @@
         const module = state.installedModules[moduleId];
         const schema = state.modules.find(m => m.id === moduleId)?.configSchema;
         if (!schema) return null;
+        module.config = module.config || {};
 
         const form = document.createElement('div');
         form.className = 'rm-config-form';
@@ -892,16 +1001,14 @@
         });
 
         // 折叠头部
-        const header = document.createElement('div');
+        const header = document.createElement('button');
+        header.type = 'button';
         header.className = 'rm-config-header';
+        header.setAttribute('aria-expanded', 'false');
         const titleWrap = document.createElement('div');
         titleWrap.className = 'rm-config-title';
-        const gearIcon = document.createElement('span');
-        gearIcon.textContent = '⚙';
-        gearIcon.style.fontSize = '11px';
         const titleText = document.createElement('span');
         titleText.textContent = '模块配置';
-        titleWrap.appendChild(gearIcon);
         titleWrap.appendChild(titleText);
 
         const arrow = document.createElement('span');
@@ -915,19 +1022,29 @@
         const body = document.createElement('div');
         body.className = 'rm-config-body collapsed';
         body.setAttribute('data-module-config', moduleId);
+        body.id = `rm-config-${moduleId}`;
+        body.inert = true;
+        body.setAttribute('aria-hidden', 'true');
+        header.setAttribute('aria-controls', body.id);
 
         header.addEventListener('click', () => {
             const isCollapsed = body.classList.contains('collapsed');
             if (isCollapsed) {
                 body.classList.remove('collapsed');
+                body.inert = false;
+                body.setAttribute('aria-hidden', 'false');
                 arrow.classList.remove('collapsed');
+                header.setAttribute('aria-expanded', 'true');
             } else {
                 body.classList.add('collapsed');
+                body.inert = true;
+                body.setAttribute('aria-hidden', 'true');
                 arrow.classList.add('collapsed');
+                header.setAttribute('aria-expanded', 'false');
             }
         });
 
-        schema.forEach(item => {
+        schema.forEach((item, index) => {
             const wrapper = document.createElement('div');
             wrapper.style.marginBottom = '10px';
 
@@ -956,7 +1073,14 @@
             if (item.type === 'text') {
                 input = document.createElement('input');
                 input.type = 'text';
-                input.value = module.config[item.key] || item.default;
+                input.value = module.config[item.key] ?? item.default ?? '';
+                input.setAttribute('data-config-key', item.key);
+                Object.assign(input.style, inputBase);
+            } else if (item.type === 'password') {
+                input = document.createElement('input');
+                input.type = 'password';
+                input.value = module.config[item.key] ?? item.default ?? '';
+                input.autocomplete = 'off';
                 input.setAttribute('data-config-key', item.key);
                 Object.assign(input.style, inputBase);
             } else if (item.type === 'select') {
@@ -973,8 +1097,12 @@
                 });
             }
 
+            if (!input) return;
+            input.id = `rm-config-${moduleId}-${index}`;
+            label.htmlFor = input.id;
+
             input.addEventListener('change', () => {
-                module.config[item.key] = input.type === 'select-one' ? input.value : input.value;
+                module.config[item.key] = input.value;
                 GM_setValue(`module_${moduleId}`, JSON.stringify(module));
                 executeModule(module);
             });
@@ -990,13 +1118,91 @@
         return form;
     }
 
-    // 加载模块列表
-    async function loadModuleList() {
+    function getModuleListCacheKey(sourceName = GM_getValue('source_name', 'Github')) {
+        return `module_list_cache_${sourceName}`;
+    }
+
+    function loadCachedModuleList() {
         try {
-            const response = await fetch(CONFIG.getModuleListUrl());
+            const cached = JSON.parse(GM_getValue(getModuleListCacheKey(), '[]'));
+            return applyInstalledState(validateModuleList(cached));
+        } catch (error) {
+            console.warn('读取模块列表缓存失败:', error);
+            GM_deleteValue(getModuleListCacheKey());
+            return [];
+        }
+    }
+
+    function validateModuleList(modules) {
+        if (!Array.isArray(modules)) {
+            throw new Error('模块列表格式无效');
+        }
+
+        const ids = new Set();
+        modules.forEach(module => {
+            const requiredFields = ['id', 'name', 'description', 'version', 'path', 'script'];
+            if (!module || requiredFields.some(field => typeof module[field] !== 'string' || !module[field])) {
+                throw new Error('模块列表包含无效条目');
+            }
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(module.id)
+                || !/^[a-z0-9][a-z0-9-]*$/.test(module.path)
+                || !/^[a-zA-Z0-9._-]+\.user\.js$/.test(module.script)
+                || !/^\d+(\.\d+)*$/.test(module.version)) {
+                throw new Error(`模块标识、路径或版本无效: ${module.id}`);
+            }
+            if (module.configSchema !== undefined && !Array.isArray(module.configSchema)) {
+                throw new Error(`模块配置格式无效: ${module.id}`);
+            }
+            (module.configSchema || []).forEach(item => {
+                const validTypes = ['text', 'password', 'select'];
+                if (!item || !/^[a-zA-Z0-9_]+$/.test(item.key)
+                    || typeof item.label !== 'string'
+                    || !validTypes.includes(item.type)
+                    || (item.type === 'select' && !Array.isArray(item.options))) {
+                    throw new Error(`模块配置项无效: ${module.id}`);
+                }
+            });
+            if (ids.has(module.id)) {
+                throw new Error(`模块 ID 重复: ${module.id}`);
+            }
+            ids.add(module.id);
+        });
+        return modules;
+    }
+
+    function applyInstalledState(modules) {
+        modules.forEach(module => {
+            const installedModule = state.installedModules[module.id];
+            module.hasUpdate = installedModule
+                ? compareVersions(module.version, installedModule.version) > 0
+                : false;
+            module.installed = Boolean(installedModule);
+            if (installedModule) module.enabled = installedModule.enabled;
+        });
+        return modules;
+    }
+
+    // 加载模块列表
+    async function loadModuleList(force = false) {
+        const sourceName = GM_getValue('source_name', 'Github');
+        if (moduleListRequest?.sourceName === sourceName) {
+            return moduleListRequest.promise;
+        }
+        if (!force
+            && state.moduleListSource === sourceName
+            && Date.now() - state.moduleListLoadedAt < 60 * 1000) {
+            return state.modules;
+        }
+
+        const request = (async () => {
+          try {
+            const response = await gmFetch(CONFIG.getModuleListUrl());
             if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
 
-            const remoteModules = await response.json();
+            const remoteModules = validateModuleList(await response.json());
+            if (GM_getValue('source_name', 'Github') !== sourceName) {
+                return state.modules;
+            }
             const installedIds = Object.keys(state.installedModules);
 
             // 1. 检查下架模块
@@ -1005,57 +1211,50 @@
             );
 
             if (deprecatedModules.length > 0) {
-                handleDeprecatedModules(deprecatedModules);
+                handleUnavailableModules(deprecatedModules);
             }
 
-            // 2. 为每个模块标记更新状态
-            remoteModules.forEach(module => {
-                const installedModule = state.installedModules[module.id];
-                module.hasUpdate = installedModule ?
-                    (compareVersions(module.version, installedModule.version) > 0) :
-                    false;
-
-                // 保留原始安装状态
-                if (installedModule) {
-                    module.installed = true;
-                    module.enabled = installedModule.enabled;
-                }
-            });
+            // 2. 缓存已验证的清单，并标记本地安装状态
+            GM_setValue(getModuleListCacheKey(sourceName), JSON.stringify(remoteModules));
+            applyInstalledState(remoteModules);
 
             // 3. 更新全局模块状态
             state.modules = remoteModules;
+            state.moduleListError = null;
+            state.moduleListLoadedAt = Date.now();
+            state.moduleListSource = sourceName;
             return remoteModules;
 
-        } catch (error) {
+          } catch (error) {
+            if (GM_getValue('source_name', 'Github') !== sourceName) {
+                return state.modules;
+            }
             console.error('加载模块列表失败:', error);
+            state.moduleListError = error;
             showNotification('无法获取模块列表，请检查网络', 'error');
-            // 返回缓存的模块列表（如果有）
-            return state.modules || [];
+            return applyInstalledState(Array.isArray(state.modules) ? state.modules : []);
+          }
+        })();
+
+        moduleListRequest = { sourceName, promise: request };
+        try {
+            return await request;
+        } finally {
+            if (moduleListRequest?.promise === request) moduleListRequest = null;
         }
     }
 
-    // 下架模块处理器
-    function handleDeprecatedModules(moduleIds) {
+    // 镜像可能同步延迟，源中暂时缺失的模块必须保留本地数据。
+    function handleUnavailableModules(moduleIds) {
         const SILENT_MODE = GM_getValue('silent_mode', false);
 
         if (!SILENT_MODE) {
             showNotification(
-                `发现 ${moduleIds.length} 个已下架模块，正在清理...`,
+                `当前数据源暂未包含 ${moduleIds.length} 个已安装模块，已保留本地数据`,
                 'warning'
             );
         }
-
-        moduleIds.forEach(id => {
-            const moduleName = state.installedModules[id]?.name || id;
-            console.log(`[自动清理] 移除下架模块: ${moduleName}`);
-            GM_deleteValue(`module_${id}`);
-
-            // 可选：备份配置
-            if (GM_getValue('backup_enabled', false)) {
-                const backup = JSON.stringify(state.installedModules[id]);
-                GM_setValue(`backup_${id}`, backup);
-            }
-        });
+        console.warn('[模块列表] 当前数据源缺少已安装模块:', moduleIds);
     }
 
     // 安装模块（更新时保留已有配置）
@@ -1063,7 +1262,7 @@
         try {
             const source = CONFIG.getCurrentSource();
             const scriptUrl = `${source.baseUrl}${module.path}/${module.script}`;
-            const response = await fetch(scriptUrl);
+            const response = await gmFetch(scriptUrl);
 
             if (!response.ok) {
                 throw new Error(`下载脚本失败，状态码: ${response.status}`);
@@ -1161,19 +1360,23 @@
         if (!module.enabled) return;
         try {
             // 清理旧脚本
-            document.querySelectorAll(`script[data-module="${module.id}"]`).forEach(s => s.remove());
+            const moduleId = String(module.id);
+            document.querySelectorAll('script[data-module]').forEach(scriptElement => {
+                if (scriptElement.dataset.module === moduleId) scriptElement.remove();
+            });
 
             const config = {
                 enabled: module.enabled,
                 config: module.config || {}
             };
+            const moduleIdLiteral = JSON.stringify(moduleId);
 
             const script = document.createElement('script');
             script.textContent = `
                 (function() {
                     // 配置注入
                     window.RainyunModularConfig = window.RainyunModularConfig || {};
-                    window.RainyunModularConfig['${module.id}'] = ${JSON.stringify(config)};
+                    window.RainyunModularConfig[${moduleIdLiteral}] = ${JSON.stringify(config)};
 
                     // 智能等待DOM就绪
                     const executor = () => {
@@ -1191,7 +1394,7 @@
                     }
                 })();
             `;
-            script.setAttribute('data-module', module.id);
+            script.setAttribute('data-module', moduleId);
             document.head.appendChild(script);
         } catch (error) {
             console.error(`执行模块 ${module.name} 失败:`, error);
@@ -1199,19 +1402,19 @@
     }
 
     // 检查更新
-    async function checkForUpdates() {
+    async function checkForUpdates(force = false) {
         try {
             const lastCheck = GM_getValue('lastUpdateCheck');
             const now = Date.now();
 
             // 如果距离上次检查不足24小时，则不检查
-            if (lastCheck && now - lastCheck < CONFIG.updateCheckInterval) {
-                return;
+            if (!force && lastCheck && now - lastCheck < CONFIG.updateCheckInterval) {
+                return false;
             }
 
+            await loadModuleList(force);
+            if (state.moduleListError) throw state.moduleListError;
             GM_setValue('lastUpdateCheck', now);
-
-            await loadModuleList();
 
             let updateAvailable = false;
             Object.keys(state.installedModules).forEach(moduleId => {
@@ -1254,7 +1457,7 @@
         }
 
         try {
-            await loadModuleList();
+            await loadModuleList(true);
             const remoteModule = state.modules.find(m => m.id === moduleId);
 
             if (!remoteModule) {
@@ -1284,7 +1487,17 @@
         const colorMap = { error: '#FF3B30', success: '#34C759', info: '#007AFF', warning: '#FF9500' };
         const icon = iconMap[type] || iconMap.info;
         const color = colorMap[type] || colorMap.info;
-        notification.innerHTML = `<span style="font-size:14px;line-height:1;color:${color};">${icon}</span><span style="white-space:pre-line;">${message}</span>`;
+        notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        notification.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+        const iconElement = document.createElement('span');
+        iconElement.textContent = icon;
+        iconElement.setAttribute('aria-hidden', 'true');
+        Object.assign(iconElement.style, { fontSize: '14px', lineHeight: '1', color });
+        const messageElement = document.createElement('span');
+        messageElement.textContent = String(message);
+        messageElement.style.whiteSpace = 'pre-line';
+        notification.appendChild(iconElement);
+        notification.appendChild(messageElement);
         Object.assign(notification.style, {
             position: 'fixed',
             bottom: '24px',

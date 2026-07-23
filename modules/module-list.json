@@ -19,9 +19,9 @@
     "id": "custom-background",
     "name": "自定义背景",
     "description": "自定义控制台背景图片",
-    "version": "0.5",
+    "version": "0.6",
     "path": "custom-background",
-    "script": "0.5.user.js",
+    "script": "0.6.user.js",
     "configSchema": [
       {
         "key": "background",
@@ -35,9 +35,9 @@
     "id": "custom-font",
     "name": "自定义字体",
     "description": "自定义控制台字体",
-    "version": "0.2",
+    "version": "0.3",
     "path": "custom-font",
-    "script": "0.2.user.js",
+    "script": "0.3.user.js",
     "configSchema": [
       {
         "key": "font",
@@ -89,7 +89,7 @@
     "configSchema": [
       {
         "key": "rainyun_api_key",
-        "type": "text",
+        "type": "password",
         "label": "雨云 API Key（控制台设置页生成）",
         "default": ""
       },
@@ -101,7 +101,7 @@
       },
       {
         "key": "ai_api_key",
-        "type": "text",
+        "type": "password",
         "label": "AI API Key",
         "default": ""
       },

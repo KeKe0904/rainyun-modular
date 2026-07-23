@@ -65,7 +65,7 @@ modules/
   "configSchema": [ // 可选配置
     {
       "key": "config_key",
-      "type": "text|select",
+      "type": "text|password|select",
       "label": "配置项名称",
       "options": ["选项1", "选项2"], // select类型必填
       "default": "默认值"
@@ -103,13 +103,14 @@ modules/
 - 使用严格模式(`'use strict'`)
 - 避免全局变量污染
 - DOM操作需考虑动态加载内容
-- 外部依赖需动态加载
+- 优先使用浏览器原生 API，确有必要时再动态加载外部依赖
 - 配置访问使用`window.RainyunModularConfig`
 
 ### 模块发布流程
 1. 开发完成后提交Pull Request
 2. 更新module-list.json添加模块信息
-3. 通过测试后合并到main分支
-4. 自动进入模块商店
+3. 运行 `npm test` 校验清单、版本与脚本语法
+4. 通过测试后合并到main分支
+5. 自动进入模块商店
 
 欢迎贡献新模块！🎉

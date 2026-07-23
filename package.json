@@ -1,0 +1,11 @@
+{
+  "name": "rainyun-modular",
+  "version": "2.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node scripts/validate.mjs"
+  }
+}
